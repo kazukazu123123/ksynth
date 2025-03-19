@@ -15,8 +15,24 @@ pub enum Instrument {
     Piano,
 }
 
+/// Returns the size of a `Voice` in bytes.
+pub fn get_voice_size_byte() -> usize {
+    std::mem::size_of::<Voice>()
+}
+
+/// Calculates the total memory usage for a given number of voices.
+///
+/// This function multiplies the size of a single `Voice` by the number of voices to calculate the total memory usage.
+///
+/// # Parameters
+///
+/// * `voice_count`: The number of voices.
+///
+/// # Returns
+///
+/// The total memory usage in bytes.
 pub fn calculate_voice_memory_usage(voice_count: usize) -> usize {
-    let voice_memory_usage = std::mem::size_of::<Voice>() * voice_count;
+    let voice_memory_usage = get_voice_size_byte() * voice_count;
 
     voice_memory_usage
 }
@@ -253,5 +269,9 @@ impl KSynth {
                 voice.set_is_releasing(true);
             }
         }
+    }
+
+    pub fn get_voice_size_byte() -> usize {
+        std::mem::size_of::<Voice>()
     }
 }
