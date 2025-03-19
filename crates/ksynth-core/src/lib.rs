@@ -10,11 +10,6 @@ pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voi
 
 const FADE_OUT_DURATION: f32 = 0.1;
 
-#[derive(Clone, Debug)]
-pub enum Instrument {
-    Piano,
-}
-
 /// Returns the size of a `Voice` in bytes.
 pub fn get_voice_size_byte() -> usize {
     std::mem::size_of::<Voice>()
@@ -43,7 +38,6 @@ pub struct KSynth {
     rendering_time: f32,
     samples: HashMap<u8, Sample>,
     channels: Channel,
-    instrument: Instrument,
     voices: Vec<voice::Voice>,
     polyphony: usize,
     max_polyphony: usize,
@@ -57,19 +51,36 @@ pub enum Channel {
 
 impl KSynth {
     fn calculate_sample(&self, time: f32, frequency: f32) -> f32 {
-        match self.instrument {
-            Instrument::Piano => {
-                let w = 2.0 * std::f32::consts::PI * frequency;
+        // 鉄琴の共鳴モードを追加（倍音効果の強調）
+        let harmonic_freqs = vec![
+            frequency,       // 基本周波数
+            frequency * 2.0, // 1倍音
+            frequency * 3.0, // 2倍音
+            frequency * 4.0, // 3倍音
+        ];
 
-                let mut y = 0.6 * (1.0 * w * time).sin() * (-0.0015 * w * time).exp();
-                y += 0.4 * (2.0 * w * time).sin() * (-0.0015 * w * time).exp();
-                y += y * y * y;
+        // 音量エンベロープ（鉄琴の音は比較的短く、急速に減衰する）
+        // 適切な減衰関数を追加
+        let decay_envelope = (-3.0 * time).exp(); // 少し速い減衰
 
-                let volume_scale: f32 = 0.5;
+        // 各倍音の合成を高速化
+        let final_output = harmonic_freqs
+            .iter()
+            .map(|&harmonic| {
+                let harmonic_wave = (2.0 * std::f32::consts::PI * harmonic * time).sin();
+                harmonic_wave * decay_envelope
+            })
+            .sum::<f32>();
 
-                y * volume_scale.powf(2.0)
-            }
-        }
+        // 高音フィルタリング（高音域を減衰させる）
+        let filtered_output = if frequency > 1000.0 {
+            final_output * (1.0 - (frequency - 1000.0) / 2000.0).max(0.0)
+        } else {
+            final_output
+        };
+
+        // 音量調整（鉄琴の音量は比較的小さめ）
+        filtered_output * 0.05
     }
 
     fn precalculate_sample(&mut self) {
@@ -77,8 +88,8 @@ impl KSynth {
             // Frequency calculation (440Hz * 2^((key-69)/12))
             let frequency = 440.0 * 2.0_f32.powf((key as f32 - 69.0) / 12.0);
 
-            // Calculate sample (5 seconds)
-            let sample_length = (self.sample_rate * 5) as usize;
+            // Calculate sample (60 seconds)
+            let sample_length = (self.sample_rate * 60) as usize;
 
             // Generate waveform
             let mut wave_data = Vec::with_capacity(sample_length);
@@ -102,7 +113,6 @@ impl KSynth {
             rendering_time: 0.0,
             samples: HashMap::new(),
             channels,
-            instrument: Instrument::Piano,
             voices: Vec::with_capacity(max_polyphony as usize),
             polyphony: 0,
             max_polyphony: max_polyphony.min(MAX_POLYPHONY) as usize,
