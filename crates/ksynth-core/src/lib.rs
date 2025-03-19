@@ -33,7 +33,7 @@ const MAX_POLYPHONY: u32 = 64;
 
 impl KSynth {
     const FADE_IN_DURATION: f32 = 0.01;
-    const FADE_OUT_DURATION: f32 = 0.05;
+    const FADE_OUT_DURATION: f32 = 0.1;
 
     fn calculate_sample(&self, time: f32, frequency: f32) -> f32 {
         match self.instrument {
