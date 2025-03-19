@@ -6,9 +6,19 @@ use std::{collections::HashMap, time::Instant};
 use sample::Sample;
 use voice::Voice;
 
+pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voice>() as u32);
+
+const FADE_OUT_DURATION: f32 = 0.1;
+
 #[derive(Clone, Debug)]
 pub enum Instrument {
     Piano,
+}
+
+pub fn calculate_voice_memory_usage(voice_count: usize) -> usize {
+    let voice_memory_usage = std::mem::size_of::<Voice>() * voice_count;
+
+    voice_memory_usage
 }
 
 pub struct KSynth {
@@ -28,9 +38,6 @@ pub enum Channel {
     Mono,
     Stereo,
 }
-
-const MAX_POLYPHONY: u32 = 100000;
-const FADE_OUT_DURATION: f32 = 0.1;
 
 impl KSynth {
     fn calculate_sample(&self, time: f32, frequency: f32) -> f32 {
@@ -225,7 +232,7 @@ impl KSynth {
         let elapsed_time = rendering_time_end.duration_since(rendering_time_start);
         let elapsed_time_ms = elapsed_time.as_secs_f32() * 1e3;
         let rendering_time = elapsed_time_ms / buffer_size as f32;
-        self.rendering_time = rendering_time;
+        self.rendering_time = rendering_time * 100.0;
 
         self.voices.retain(|v| v.get_is_active());
         self.polyphony = self.voices.len() as u32;
