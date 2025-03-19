@@ -165,7 +165,9 @@ impl KSynth {
         for voice in self.voices.iter_mut().filter(|v| v.is_active) {
             if let Some(sample) = self.samples.get(&voice.note) {
                 let samples = &sample.sample_data;
-                let velocity_factor = voice.get_velocity() as f32 / 127.0;
+                let vel = voice.get_velocity() as f32;
+                let log_vel = vel / 127.0;
+                let velocity_factor = (log_vel.powf(2.5) + 0.03).min(1.0);
 
                 // Process each sample
                 let mut i = 0;
