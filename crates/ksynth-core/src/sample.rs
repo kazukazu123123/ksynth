@@ -1,10 +1,10 @@
 #[derive(Clone, Debug)]
 pub struct Sample {
-    pub sample_data: Vec<f32>,
+    pub sample_data: Vec<i16>,
 }
 
 impl Sample {
-    pub fn new(data: Vec<f32>) -> Self {
+    pub fn new(data: Vec<i16>) -> Self {
         Self { sample_data: data }
     }
 

@@ -1,10 +1,10 @@
 pub struct Voice {
-    pub sample_index: usize,
-    pub velocity: u8,
-    pub is_active: bool,
-    pub is_releasing: bool,
-    pub channel: u8,
-    pub note: u8,
+    sample_index: usize,
+    is_active: bool,
+    is_releasing: bool,
+    channel: u8,
+    note: u8,
+    velocity: u8,
 }
 
 impl Voice {
@@ -31,7 +31,35 @@ impl Voice {
         self.sample_index = 0;
     }
 
+    pub fn get_channel(&self) -> u8 {
+        self.channel
+    }
+
+    pub fn get_note(&self) -> u8 {
+        self.note
+    }
+
+    pub fn get_is_active(&self) -> bool {
+        self.is_active
+    }
+
+    pub fn get_is_releasing(&self) -> bool {
+        self.is_releasing
+    }
+
     pub fn get_velocity(&self) -> u8 {
         self.velocity
+    }
+
+    pub fn set_is_active(&mut self, is_active: bool) {
+        self.is_active = is_active;
+    }
+
+    pub fn set_is_releasing(&mut self, is_releasing: bool) {
+        self.is_releasing = is_releasing;
+    }
+
+    pub fn set_sample_index(&mut self, sample_index: usize) {
+        self.sample_index = sample_index;
     }
 }
