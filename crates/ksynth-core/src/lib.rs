@@ -43,10 +43,19 @@ pub struct KSynth {
     max_polyphony: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum Channel {
     Mono,
     Stereo,
+}
+
+impl From<Channel> for u16 {
+    fn from(channel: Channel) -> Self {
+        match channel {
+            Channel::Mono => 1,
+            Channel::Stereo => 2,
+        }
+    }
 }
 
 impl KSynth {
