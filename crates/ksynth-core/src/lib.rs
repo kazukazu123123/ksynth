@@ -45,8 +45,8 @@ pub struct KSynth {
     channels: Channel,
     instrument: Instrument,
     voices: Vec<voice::Voice>,
-    polyphony: u32,
-    max_polyphony: u32,
+    polyphony: usize,
+    max_polyphony: usize,
 }
 
 #[derive(Clone)]
@@ -105,7 +105,7 @@ impl KSynth {
             instrument: Instrument::Piano,
             voices: Vec::with_capacity(max_polyphony as usize),
             polyphony: 0,
-            max_polyphony: max_polyphony.min(MAX_POLYPHONY),
+            max_polyphony: max_polyphony.min(MAX_POLYPHONY) as usize,
         };
 
         synth.precalculate_sample();
@@ -122,11 +122,11 @@ impl KSynth {
     }
 
     pub fn get_polyphony(&self) -> u32 {
-        self.polyphony
+        self.polyphony as u32
     }
 
     pub fn get_max_polyphony(&self) -> u32 {
-        self.max_polyphony
+        self.max_polyphony as u32
     }
 
     pub fn set_max_polyphony(&mut self, max_polyphony: u32) {
@@ -139,7 +139,7 @@ impl KSynth {
         self.voices.retain(|v| v.get_is_active());
 
         // Update max polyphony
-        self.max_polyphony = max_polyphony.min(MAX_POLYPHONY);
+        self.max_polyphony = max_polyphony.min(MAX_POLYPHONY) as usize;
 
         // Reset current polyphony
         self.polyphony = 0;
@@ -251,7 +251,7 @@ impl KSynth {
         self.rendering_time = rendering_time * 100.0;
 
         self.voices.retain(|v| v.get_is_active());
-        self.polyphony = self.voices.len() as u32;
+        self.polyphony = self.voices.len();
     }
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
