@@ -165,7 +165,8 @@ impl KSynth {
         let smoothing_factor = 0.9;
         let mut smoothed_rendering_time = self.rendering_time;
         for time in self.cpu_usage_history.iter() {
-            smoothed_rendering_time = smoothing_factor * smoothed_rendering_time + (1.0 - smoothing_factor) * time;
+            smoothed_rendering_time =
+                smoothing_factor * smoothed_rendering_time + (1.0 - smoothing_factor) * time;
         }
         smoothed_rendering_time
     }
