@@ -97,18 +97,18 @@ impl KSynth {
 
             let sample_data = SampleData::Stereo(wave_data);
 
-            self.samples.insert(
-                key as u8,
-                Sample::new(
-                    self.sample_rate,
-                    sample_data,
-                    None,
-                ),
-            );
+            self.samples
+                .insert(key as u8, Sample::new(self.sample_rate, sample_data, None));
         }
     }
 
-    pub fn new(sample_rate: u32, channels: Channel, max_polyphony: u32, fade_in_duration: Option<f32>, fade_out_duration: Option<f32>) -> Self {
+    pub fn new(
+        sample_rate: u32,
+        channels: Channel,
+        max_polyphony: u32,
+        fade_in_duration: Option<f32>,
+        fade_out_duration: Option<f32>,
+    ) -> Self {
         let mut synth = Self {
             midi_queue: Vec::new(),
             sample_rate,
@@ -255,7 +255,8 @@ impl KSynth {
 
                     // Fade in processing
                     if !voice.get_is_releasing() {
-                        let fade_in_samples = (self.sample_rate as f32 * self.fade_in_duration) as usize;
+                        let fade_in_samples =
+                            (self.sample_rate as f32 * self.fade_in_duration) as usize;
                         let samples_since_start = voice.current_sample_index();
                         if samples_since_start < fade_in_samples {
                             amplitude = samples_since_start as f32 / fade_in_samples as f32;
@@ -338,11 +339,10 @@ impl KSynth {
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
         let voice = Voice::new(channel, note, velocity);
-        self.voices.push_front(voice);
-
-        if self.voices.len() > self.max_polyphony as usize {
+        if self.voices.len() >= self.max_polyphony as usize {
             self.voices.pop_back();
         }
+        self.voices.push_front(voice);
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {
