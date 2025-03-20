@@ -40,14 +40,6 @@ impl Sample {
             SampleData::Stereo(data) => data.len(),
         };
 
-        // Check if the length of mono and stereo are the same
-        let sample_length_mono = match &sample_data {
-            SampleData::Mono(data) => data.len(),
-            SampleData::Stereo(data) => data.len(),
-        };
-
-        assert_eq!(sample_length, sample_length_mono);
-
         Self {
             sample_rate,
             sample_length,
