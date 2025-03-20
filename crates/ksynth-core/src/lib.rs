@@ -213,10 +213,12 @@ impl KSynth {
                             let samples_since_start = voice.current_sample_index();
 
                             // Check if fade in is complete
-                            if samples_since_start >= fade_in_samples {
+                            if samples_since_start < fade_in_samples {
+                                amplitude = samples_since_start as f32 / fade_in_samples as f32;
+                            } else {
+                                // Fade out processing
                                 if samples_since_release < fade_samples {
-                                    amplitude =
-                                        1.0 - (samples_since_release as f32 / fade_samples as f32);
+                                    amplitude *= 1.0 - (samples_since_release as f32 / fade_samples as f32);
                                 } else {
                                     voice.set_is_active(false);
                                 }
