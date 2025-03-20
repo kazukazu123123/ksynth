@@ -368,8 +368,4 @@ impl KSynth {
             }
         }
     }
-
-    pub fn get_voice_size_byte() -> usize {
-        std::mem::size_of::<Voice>()
-    }
 }
