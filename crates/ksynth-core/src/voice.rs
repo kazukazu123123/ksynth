@@ -29,6 +29,10 @@ impl Voice {
         self.sample_index += 1;
     }
 
+    pub fn set_current_sample_index(&mut self, index: usize) {
+        self.sample_index = index;
+    }
+
     pub fn reset_sample_index(&mut self) {
         self.sample_index = 0;
     }

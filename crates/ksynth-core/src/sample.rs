@@ -3,6 +3,7 @@ pub struct Sample {
     sample_rate: u32,
     sample_length: usize,
     sample_data: SampleData,
+    sample_loop: Option<SampleLoop>,
 }
 
 #[derive(Clone, Debug)]
@@ -11,8 +12,29 @@ pub enum SampleData {
     Stereo(Vec<(i16, i16)>),
 }
 
+#[derive(Clone, Debug)]
+pub struct SampleLoop {
+    start: usize,
+    end: usize,
+}
+
+impl SampleLoop {
+    pub fn new(start: usize, end: usize) -> Self {
+        assert!(start < end, "start must be less than end");
+        Self { start, end }
+    }
+
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    pub fn end(&self) -> usize {
+        self.end
+    }
+}
+
 impl Sample {
-    pub fn new(sample_rate: u32, sample_data: SampleData) -> Self {
+    pub fn new(sample_rate: u32, sample_data: SampleData, sample_loop: Option<SampleLoop>) -> Self {
         let sample_length = match &sample_data {
             SampleData::Mono(data) => data.len(),
             SampleData::Stereo(data) => data.len(),
@@ -30,6 +52,7 @@ impl Sample {
             sample_rate,
             sample_length,
             sample_data,
+            sample_loop,
         }
     }
 
@@ -39,6 +62,10 @@ impl Sample {
 
     pub fn get_sample_data(&self) -> &SampleData {
         &self.sample_data
+    }
+
+    pub fn get_sample_loop(&self) -> Option<&SampleLoop> {
+        self.sample_loop.as_ref()
     }
 
     pub fn downmix(self) -> Vec<i16> {

@@ -45,6 +45,8 @@ pub enum Channel {
 pub struct KSynth {
     midi_queue: Vec<u32>,
     sample_rate: u32,
+    fade_in_duration: f32,
+    fade_out_duration: f32,
     rendering_time: f32,
     samples: HashMap<u8, Sample>,
     channels: Channel,
@@ -95,15 +97,23 @@ impl KSynth {
 
             let sample_data = SampleData::Stereo(wave_data);
 
-            self.samples
-                .insert(key as u8, Sample::new(self.sample_rate, sample_data));
+            self.samples.insert(
+                key as u8,
+                Sample::new(
+                    self.sample_rate,
+                    sample_data,
+                    None,
+                ),
+            );
         }
     }
 
-    pub fn new(sample_rate: u32, channels: Channel, max_polyphony: u32) -> Self {
+    pub fn new(sample_rate: u32, channels: Channel, max_polyphony: u32, fade_in_duration: Option<f32>, fade_out_duration: Option<f32>) -> Self {
         let mut synth = Self {
             midi_queue: Vec::new(),
             sample_rate,
+            fade_in_duration: fade_in_duration.unwrap_or(FADE_IN_DURATION),
+            fade_out_duration: fade_out_duration.unwrap_or(FADE_OUT_DURATION),
             rendering_time: 0.0,
             samples: HashMap::new(),
             channels,
@@ -119,6 +129,30 @@ impl KSynth {
 
     pub fn queue_midi_cmd(&mut self, cmd: u32) {
         self.midi_queue.push(cmd);
+    }
+
+    pub fn get_fade_in_duration(&self) -> f32 {
+        self.fade_in_duration
+    }
+
+    pub fn get_fade_out_duration(&self) -> f32 {
+        self.fade_out_duration
+    }
+
+    pub fn set_fade_in_duration(&mut self, fade_in_duration: f32) {
+        self.fade_in_duration = fade_in_duration;
+    }
+
+    pub fn set_fade_out_duration(&mut self, fade_out_duration: f32) {
+        self.fade_out_duration = fade_out_duration;
+    }
+
+    pub fn reset_fade_in_duration(&mut self) {
+        self.fade_in_duration = FADE_IN_DURATION;
+    }
+
+    pub fn reset_fade_out_duration(&mut self) {
+        self.fade_out_duration = FADE_OUT_DURATION;
     }
 
     pub fn get_rendering_time(&self) -> f32 {
@@ -198,16 +232,20 @@ impl KSynth {
                 if let Some(sample) = self.samples.get(&voice.get_note()) {
                     let sample_data = sample.get_sample_data();
                     let sample_length = sample.sample_length();
+                    let sample_loop = sample.get_sample_loop();
 
                     // Fade out processing
                     let mut amplitude = 1.0;
                     if voice.get_is_releasing() {
                         if let Some(release_start) = voice.get_release_start_index() {
-                            let samples_since_release = voice.current_sample_index() - release_start;
-                            let fade_samples = (self.sample_rate as f32 * FADE_OUT_DURATION) as usize;
+                            let samples_since_release =
+                                voice.current_sample_index() - release_start;
+                            let fade_samples =
+                                (self.sample_rate as f32 * self.fade_out_duration) as usize;
 
                             // Fade out calculation
-                            amplitude *= 1.0 - (samples_since_release as f32 / fade_samples as f32).min(1.0);
+                            amplitude *=
+                                1.0 - (samples_since_release as f32 / fade_samples as f32).min(1.0);
 
                             if samples_since_release >= fade_samples {
                                 voice.set_is_active(false);
@@ -217,7 +255,7 @@ impl KSynth {
 
                     // Fade in processing
                     if !voice.get_is_releasing() {
-                        let fade_in_samples = (self.sample_rate as f32 * FADE_IN_DURATION) as usize;
+                        let fade_in_samples = (self.sample_rate as f32 * self.fade_in_duration) as usize;
                         let samples_since_start = voice.current_sample_index();
                         if samples_since_start < fade_in_samples {
                             amplitude = samples_since_start as f32 / fade_in_samples as f32;
@@ -229,6 +267,7 @@ impl KSynth {
                     let velocity_factor = f32::min(log_vel.powf(2.5) + 0.03, 1.0);
                     amplitude *= velocity_factor;
 
+                    // Sample processing
                     match (self.channels, sample_data) {
                         (Channel::Mono, SampleData::Mono(data)) => {
                             if !data.is_empty() {
@@ -271,9 +310,16 @@ impl KSynth {
                     // Increment sample index
                     voice.increment_sample_index();
 
-                    // If sample index is greater than or equal to sample length, deactivate voice
-                    if voice.current_sample_index() >= sample_length {
-                        voice.set_is_active(false);
+                    // Loop handling
+                    if let Some(loop_info) = sample_loop {
+                        if voice.current_sample_index() >= loop_info.end() {
+                            voice.set_current_sample_index(loop_info.start());
+                        }
+                    } else {
+                        // If sample index is greater than or equal to sample length, deactivate voice
+                        if voice.current_sample_index() >= sample_length {
+                            voice.set_is_active(false);
+                        }
                     }
                 }
             }
