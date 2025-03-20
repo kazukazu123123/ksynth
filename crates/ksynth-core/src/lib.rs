@@ -12,7 +12,7 @@ use voice::Voice;
 pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voice>() as u32);
 
 const FADE_IN_DURATION: f32 = 0.01;
-const FADE_OUT_DURATION: f32 = 0.005;
+const FADE_OUT_DURATION: f32 = 0.01;
 
 /// Returns the size of a `Voice` in bytes.
 pub fn get_voice_size_byte() -> usize {
