@@ -199,29 +199,18 @@ impl KSynth {
                     let sample_data = sample.get_sample_data();
                     let sample_length = sample.sample_length();
 
-                    // Release processing (fade out)
+                    // Fade out processing
                     let mut amplitude = 1.0;
                     if voice.get_is_releasing() {
                         if let Some(release_start) = voice.get_release_start_index() {
-                            let samples_since_release =
-                                voice.current_sample_index() - release_start;
-                            let fade_samples =
-                                (self.sample_rate as f32 * FADE_OUT_DURATION) as usize;
+                            let samples_since_release = voice.current_sample_index() - release_start;
+                            let fade_samples = (self.sample_rate as f32 * FADE_OUT_DURATION) as usize;
 
-                            // Fade in processing
-                            let fade_in_samples = (self.sample_rate as f32 * FADE_IN_DURATION) as usize;
-                            let samples_since_start = voice.current_sample_index();
+                            // Fade out calculation
+                            amplitude *= 1.0 - (samples_since_release as f32 / fade_samples as f32).min(1.0);
 
-                            // Check if fade in is complete
-                            if samples_since_start < fade_in_samples {
-                                amplitude = samples_since_start as f32 / fade_in_samples as f32;
-                            } else {
-                                // Fade out processing
-                                if samples_since_release < fade_samples {
-                                    amplitude *= 1.0 - (samples_since_release as f32 / fade_samples as f32);
-                                } else {
-                                    voice.set_is_active(false);
-                                }
+                            if samples_since_release >= fade_samples {
+                                voice.set_is_active(false);
                             }
                         }
                     }
