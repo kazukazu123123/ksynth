@@ -1,14 +1,18 @@
 pub mod sample;
 pub mod voice;
 
-use std::{collections::HashMap, time::Instant};
+use std::{
+    collections::{HashMap, VecDeque},
+    time::Instant,
+};
 
-use sample::Sample;
+use sample::{Sample, SampleData};
 use voice::Voice;
 
 pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voice>() as u32);
 
-const FADE_OUT_DURATION: f32 = 0.1;
+const FADE_IN_DURATION: f32 = 0.01;
+const FADE_OUT_DURATION: f32 = 0.05;
 
 /// Returns the size of a `Voice` in bytes.
 pub fn get_voice_size_byte() -> usize {
@@ -32,86 +36,67 @@ pub fn calculate_voice_memory_usage(voice_count: usize) -> usize {
     voice_memory_usage
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum Channel {
+    Mono,
+    Stereo,
+}
+
 pub struct KSynth {
     midi_queue: Vec<u32>,
     sample_rate: u32,
     rendering_time: f32,
     samples: HashMap<u8, Sample>,
     channels: Channel,
-    voices: Vec<voice::Voice>,
+    voices: VecDeque<voice::Voice>,
     polyphony: usize,
     max_polyphony: usize,
 }
 
-#[derive(Clone, Copy)]
-pub enum Channel {
+#[derive(Clone, Copy, Debug)]
+pub enum SampleMode {
     Mono,
     Stereo,
 }
 
-impl From<Channel> for u16 {
-    fn from(channel: Channel) -> Self {
-        match channel {
-            Channel::Mono => 1,
-            Channel::Stereo => 2,
-        }
-    }
-}
-
 impl KSynth {
     fn calculate_sample(&self, time: f32, frequency: f32) -> f32 {
-        // 鉄琴の共鳴モードを追加（倍音効果の強調）
-        let harmonic_freqs = vec![
-            frequency,       // 基本周波数
-            frequency * 2.0, // 1倍音
-            frequency * 3.0, // 2倍音
-            frequency * 4.0, // 3倍音
-        ];
+        let w = 2.0 * std::f32::consts::PI * frequency;
 
-        // 音量エンベロープ（鉄琴の音は比較的短く、急速に減衰する）
-        // 適切な減衰関数を追加
-        let decay_envelope = (-3.0 * time).exp(); // 少し速い減衰
+        let mut y = 0.6 * (1.0 * w * time).sin() * (-0.0015 * w * time).exp();
+        y += 0.4 * (2.0 * w * time).sin() * (-0.0015 * w * time).exp();
+        y += y * y * y;
 
-        // 各倍音の合成を高速化
-        let final_output = harmonic_freqs
-            .iter()
-            .map(|&harmonic| {
-                let harmonic_wave = (2.0 * std::f32::consts::PI * harmonic * time).sin();
-                harmonic_wave * decay_envelope
-            })
-            .sum::<f32>();
+        let volume_scale: f32 = 0.5;
 
-        // 高音フィルタリング（高音域を減衰させる）
-        let filtered_output = if frequency > 1000.0 {
-            final_output * (1.0 - (frequency - 1000.0) / 2000.0).max(0.0)
-        } else {
-            final_output
-        };
+        y * volume_scale.powf(2.0)
+    }
 
-        // 音量調整（鉄琴の音量は比較的小さめ）
-        filtered_output * 0.05
+    fn calculate_sample_stereo(&self, time: f32, frequency: f32) -> (f32, f32) {
+        let sample = self.calculate_sample(time, frequency);
+
+        (sample, sample)
     }
 
     fn precalculate_sample(&mut self) {
+        let sample_length = (self.sample_rate * 5) as usize;
         for key in 0..128 {
-            // Frequency calculation (440Hz * 2^((key-69)/12))
             let frequency = 440.0 * 2.0_f32.powf((key as f32 - 69.0) / 12.0);
 
-            // Calculate sample (60 seconds)
-            let sample_length = (self.sample_rate * 60) as usize;
+            let wave_data: Vec<_> = (0..sample_length)
+                .map(|i| {
+                    let t = i as f32 / self.sample_rate as f32;
+                    let (sample_left, sample_right) = self.calculate_sample_stereo(t, frequency);
+                    let scaled_sample_left = (sample_left * i16::MAX as f32).round() as i16;
+                    let scaled_sample_right = (sample_right * i16::MAX as f32).round() as i16;
+                    (scaled_sample_left, scaled_sample_right)
+                })
+                .collect();
 
-            // Generate waveform
-            let mut wave_data = Vec::with_capacity(sample_length);
-            for i in 0..sample_length {
-                let t = i as f32 / self.sample_rate as f32;
-                let sample = self.calculate_sample(t, frequency);
+            let sample_data = SampleData::Stereo(wave_data);
 
-                let scaled_sample = (sample * i16::MAX as f32).round() as i16;
-                wave_data.push(scaled_sample);
-            }
-
-            // Add sample to HashMap
-            self.samples.insert(key as u8, Sample::new(wave_data));
+            self.samples
+                .insert(key as u8, Sample::new(self.sample_rate, sample_data));
         }
     }
 
@@ -122,7 +107,7 @@ impl KSynth {
             rendering_time: 0.0,
             samples: HashMap::new(),
             channels,
-            voices: Vec::with_capacity(max_polyphony as usize),
+            voices: VecDeque::with_capacity(max_polyphony as usize),
             polyphony: 0,
             max_polyphony: max_polyphony.min(MAX_POLYPHONY) as usize,
         };
@@ -165,12 +150,14 @@ impl KSynth {
     }
 
     pub fn fill_buffer(&mut self, buffer: &mut [f32], buffer_size: usize) {
-        let min_size = match self.channels {
+        let channels = match self.channels {
             Channel::Mono => 1,
             Channel::Stereo => 2,
         };
 
-        if buffer_size < min_size {
+        let frame_count = buffer_size / channels;
+
+        if frame_count == 0 {
             return;
         }
 
@@ -187,12 +174,10 @@ impl KSynth {
                     if velocity > 0 {
                         self.note_on(channel, note, velocity);
                     } else {
-                        // Call note off command always when note off command is sent
                         self.note_off(channel, note);
                     }
                 }
                 0x80 => {
-                    // Call note off command always when note off command is sent
                     self.note_off(channel, note);
                 }
                 _ => {}
@@ -201,64 +186,104 @@ impl KSynth {
 
         let rendering_time_start = Instant::now();
 
-        // Process active voice
-        for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
-            if let Some(sample) = self.samples.get(&voice.get_note()) {
-                let samples = &sample.sample_data;
-                let vel = voice.get_velocity() as f32 / 127.0;
-                let velocity_factor = (vel.powf(2.5) + 0.03).min(1.0);
+        for frame in 0..frame_count {
+            let buffer_index = frame * channels;
 
-                // Process each sample
-                let mut i = 0;
-                while i < buffer_size {
-                    let sample_index = voice.current_sample_index();
+            // Process active voices
+            for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
+                if voice.get_channel() == 9 {
+                    continue;
+                }
 
-                    // If the sample index exceeds the sample range (when the sample has ended)
-                    if sample_index >= samples.len() {
-                        voice.set_is_active(false);
-                        break;
-                    } else {
-                        // Get sample
-                        let sample_value = samples[sample_index] as f32 / i16::MAX as f32;
+                if let Some(sample) = self.samples.get(&voice.get_note()) {
+                    let sample_data = sample.get_sample_data();
+                    let sample_length = sample.sample_length();
 
-                        // Fade-out
-                        let fade_factor = if voice.get_is_releasing() {
-                            let fade_out_samples =
-                                (FADE_OUT_DURATION * self.sample_rate as f32) as usize;
-                            let elapsed = sample_index as f32;
-                            let fade = 1.0 - (elapsed / fade_out_samples as f32);
+                    // Release processing (fade out)
+                    let mut amplitude = 1.0;
+                    if voice.get_is_releasing() {
+                        if let Some(release_start) = voice.get_release_start_index() {
+                            let samples_since_release =
+                                voice.current_sample_index() - release_start;
+                            let fade_samples =
+                                (self.sample_rate as f32 * FADE_OUT_DURATION) as usize;
 
-                            fade.max(0.0)
-                        } else {
-                            1.0
-                        };
+                            // Fade in processing
+                            let fade_in_samples = (self.sample_rate as f32 * FADE_IN_DURATION) as usize;
+                            let samples_since_start = voice.current_sample_index();
 
-                        let final_sample = sample_value * velocity_factor * fade_factor;
-
-                        match self.channels {
-                            Channel::Stereo => {
-                                let buffer_index = i * 2;
-                                if buffer_index + 1 < buffer.len() {
-                                    buffer[buffer_index] += final_sample;
-                                    buffer[buffer_index + 1] += final_sample;
+                            // Check if fade in is complete
+                            if samples_since_start >= fade_in_samples {
+                                if samples_since_release < fade_samples {
+                                    amplitude =
+                                        1.0 - (samples_since_release as f32 / fade_samples as f32);
+                                } else {
+                                    voice.set_is_active(false);
                                 }
                             }
-                            Channel::Mono => {
-                                if i < buffer.len() {
-                                    buffer[i] += final_sample;
-                                }
-                            }
-                        }
-
-                        voice.increment_sample_index();
-
-                        // If the fade-out is complete, stop the voice
-                        if voice.get_is_releasing() && fade_factor <= 0.01 {
-                            voice.set_is_active(false);
                         }
                     }
 
-                    i += 1;
+                    // Fade in processing
+                    if !voice.get_is_releasing() {
+                        let fade_in_samples = (self.sample_rate as f32 * FADE_IN_DURATION) as usize;
+                        let samples_since_start = voice.current_sample_index();
+                        if samples_since_start < fade_in_samples {
+                            amplitude = samples_since_start as f32 / fade_in_samples as f32;
+                        }
+                    }
+
+                    let vel = voice.get_velocity() as f32;
+                    let log_vel = vel / 127.0;
+                    let velocity_factor = f32::min(log_vel.powf(2.5) + 0.03, 1.0);
+                    amplitude *= velocity_factor;
+
+                    match (self.channels, sample_data) {
+                        (Channel::Mono, SampleData::Mono(data)) => {
+                            if !data.is_empty() {
+                                let sample_index = voice.current_sample_index() % data.len();
+                                let sample_value =
+                                    data[sample_index] as f32 / i16::MAX as f32 * amplitude;
+                                buffer[buffer_index] += sample_value;
+                            }
+                        }
+                        (Channel::Mono, SampleData::Stereo(data)) => {
+                            if !data.is_empty() {
+                                let sample_index = voice.current_sample_index() % data.len();
+                                let (left, right) = data[sample_index];
+                                let sample_value =
+                                    ((left + right) / 2) as f32 / i16::MAX as f32 * amplitude;
+                                buffer[buffer_index] += sample_value;
+                            }
+                        }
+                        (Channel::Stereo, SampleData::Mono(data)) => {
+                            if !data.is_empty() {
+                                let sample_index = voice.current_sample_index() % data.len();
+                                let sample_value =
+                                    data[sample_index] as f32 / i16::MAX as f32 * amplitude;
+                                buffer[buffer_index] += sample_value;
+                                buffer[buffer_index + 1] += sample_value;
+                            }
+                        }
+                        (Channel::Stereo, SampleData::Stereo(data)) => {
+                            if !data.is_empty() {
+                                let sample_index = voice.current_sample_index() % data.len();
+                                let (left, right) = data[sample_index];
+                                let left_value = left as f32 / i16::MAX as f32 * amplitude;
+                                let right_value = right as f32 / i16::MAX as f32 * amplitude;
+                                buffer[buffer_index] += left_value;
+                                buffer[buffer_index + 1] += right_value;
+                            }
+                        }
+                    }
+
+                    // Increment sample index
+                    voice.increment_sample_index();
+
+                    // If sample index is greater than or equal to sample length, deactivate voice
+                    if voice.current_sample_index() >= sample_length {
+                        voice.set_is_active(false);
+                    }
                 }
             }
         }
@@ -269,16 +294,17 @@ impl KSynth {
         let rendering_time = elapsed_time_ms / buffer_size as f32;
         self.rendering_time = rendering_time * 100.0;
 
+        // Remove inactive voices
         self.voices.retain(|v| v.get_is_active());
         self.polyphony = self.voices.len();
     }
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
         let voice = Voice::new(channel, note, velocity);
-        self.voices.push(voice);
+        self.voices.push_front(voice);
 
         if self.voices.len() > self.max_polyphony as usize {
-            self.voices.remove(0);
+            self.voices.pop_back();
         }
     }
 

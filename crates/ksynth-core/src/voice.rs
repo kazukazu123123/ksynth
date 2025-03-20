@@ -1,5 +1,6 @@
 pub struct Voice {
     sample_index: usize,
+    release_start_index: Option<usize>,
     is_active: bool,
     is_releasing: bool,
     channel: u8,
@@ -10,10 +11,11 @@ pub struct Voice {
 impl Voice {
     pub fn new(channel: u8, note: u8, velocity: u8) -> Self {
         Self {
+            sample_index: 0,
+            release_start_index: None,
             is_active: true,
             is_releasing: false,
             channel,
-            sample_index: 0,
             note,
             velocity,
         }
@@ -57,9 +59,14 @@ impl Voice {
 
     pub fn set_is_releasing(&mut self, is_releasing: bool) {
         self.is_releasing = is_releasing;
+        if is_releasing {
+            self.release_start_index = Some(self.sample_index);
+        } else {
+            self.release_start_index = None;
+        }
     }
 
-    pub fn set_sample_index(&mut self, sample_index: usize) {
-        self.sample_index = sample_index;
+    pub fn get_release_start_index(&self) -> Option<usize> {
+        self.release_start_index
     }
 }
