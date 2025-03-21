@@ -3,9 +3,9 @@ pub mod voice;
 
 use std::{
     collections::{HashMap, VecDeque},
+    sync::{Arc, Mutex},
     time::Instant,
 };
-
 
 use sample::{Sample, SampleData};
 use voice::Voice;
@@ -49,7 +49,7 @@ pub struct KSynth {
     fade_in_duration: f32,
     fade_out_duration: f32,
     rendering_time: f32,
-    samples: HashMap<u8, Sample>,
+    samples: Arc<Mutex<HashMap<u8, Sample>>>,
     num_channel: Channel,
     voices: VecDeque<voice::Voice>,
     polyphony: usize,
@@ -64,68 +64,27 @@ pub enum SampleMode {
 }
 
 impl KSynth {
-    fn calculate_sample(&self, time: f32, frequency: f32) -> f32 {
-        let w = 2.0 * std::f32::consts::PI * frequency;
-
-        let mut y = 0.6 * (1.0 * w * time).sin() * (-0.0015 * w * time).exp();
-        y += 0.4 * (2.0 * w * time).sin() * (-0.0015 * w * time).exp();
-        y += y * y * y;
-
-        let volume_scale: f32 = 0.5;
-
-        y * volume_scale.powf(2.0)
-    }
-
-    fn calculate_sample_stereo(&self, time: f32, frequency: f32) -> (f32, f32) {
-        let sample = self.calculate_sample(time, frequency);
-
-        (sample, sample)
-    }
-
-    fn precalculate_sample(&mut self) {
-        let sample_length = (self.sample_rate * 5) as usize;
-        for key in 0..128 {
-            let frequency = 440.0 * 2.0_f32.powf((key as f32 - 69.0) / 12.0);
-
-            let wave_data: Vec<_> = (0..sample_length)
-                .map(|i| {
-                    let t = i as f32 / self.sample_rate as f32;
-                    let (sample_left, sample_right) = self.calculate_sample_stereo(t, frequency);
-                    let scaled_sample_left = (sample_left * i16::MAX as f32).round() as i16;
-                    let scaled_sample_right = (sample_right * i16::MAX as f32).round() as i16;
-                    (scaled_sample_left, scaled_sample_right)
-                })
-                .collect();
-
-            let sample_data = SampleData::Stereo(wave_data);
-
-            self.samples
-                .insert(key as u8, Sample::new(self.sample_rate, sample_data, None));
-        }
-    }
-
     pub fn new(
         sample_rate: u32,
         num_channel: Channel,
         max_polyphony: u32,
         fade_in_duration: Option<f32>,
         fade_out_duration: Option<f32>,
+        samples: Arc<Mutex<HashMap<u8, Sample>>>,
     ) -> Self {
-        let mut synth = Self {
+        let synth = Self {
             midi_queue: Vec::new(),
             sample_rate,
             fade_in_duration: fade_in_duration.unwrap_or(FADE_IN_DURATION),
             fade_out_duration: fade_out_duration.unwrap_or(FADE_OUT_DURATION),
             rendering_time: 0.0,
-            samples: HashMap::new(),
+            samples,
             num_channel,
             voices: VecDeque::with_capacity(max_polyphony as usize),
             polyphony: 0,
             max_polyphony: max_polyphony.min(MAX_POLYPHONY) as usize,
             cpu_usage_history: Vec::new(),
         };
-
-        synth.precalculate_sample();
 
         synth
     }
@@ -244,7 +203,7 @@ impl KSynth {
                     continue;
                 }
 
-                if let Some(sample) = self.samples.get(&voice.get_note()) {
+                if let Some(sample) = self.samples.lock().unwrap().get(&voice.get_note()) {
                     let sample_data = sample.get_sample_data();
                     let sample_length = sample.sample_length();
                     let sample_loop = sample.get_sample_loop();
