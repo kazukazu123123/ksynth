@@ -49,7 +49,7 @@ pub struct KSynth {
     fade_out_duration: f32,
     rendering_time: f32,
     samples: HashMap<u8, Sample>,
-    channels: Channel,
+    num_channel: Channel,
     voices: VecDeque<voice::Voice>,
     polyphony: usize,
     max_polyphony: usize,
@@ -105,7 +105,7 @@ impl KSynth {
 
     pub fn new(
         sample_rate: u32,
-        channels: Channel,
+        num_channel: Channel,
         max_polyphony: u32,
         fade_in_duration: Option<f32>,
         fade_out_duration: Option<f32>,
@@ -117,7 +117,7 @@ impl KSynth {
             fade_out_duration: fade_out_duration.unwrap_or(FADE_OUT_DURATION),
             rendering_time: 0.0,
             samples: HashMap::new(),
-            channels,
+            num_channel,
             voices: VecDeque::with_capacity(max_polyphony as usize),
             polyphony: 0,
             max_polyphony: max_polyphony.min(MAX_POLYPHONY) as usize,
@@ -196,12 +196,12 @@ impl KSynth {
     }
 
     pub fn fill_buffer(&mut self, buffer: &mut [f32], buffer_size: usize) {
-        let channels = match self.channels {
+        let channel = match self.num_channel {
             Channel::Mono => 1,
             Channel::Stereo => 2,
         };
 
-        let frame_count = buffer_size / channels;
+        let frame_count = buffer_size / channel;
 
         if frame_count == 0 {
             return;
@@ -233,7 +233,7 @@ impl KSynth {
         let rendering_time_start = Instant::now();
 
         for frame in 0..frame_count {
-            let buffer_index = frame * channels;
+            let buffer_index = frame * channel;
 
             // Process active voices
             for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
@@ -281,7 +281,7 @@ impl KSynth {
                     amplitude *= velocity_factor;
 
                     // Sample processing
-                    match (self.channels, sample_data) {
+                    match (self.num_channel, sample_data) {
                         (Channel::Mono, SampleData::Mono(data)) => {
                             if !data.is_empty() {
                                 let sample_index = voice.current_sample_index() % data.len();
