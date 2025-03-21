@@ -2,6 +2,3 @@
 name = "ksynth-core"
 version.workspace = true
 edition.workspace = true
-
-[dependencies]
-web-time = "1.1.0"
