@@ -1,10 +1,13 @@
 pub mod sample;
 pub mod voice;
 
-use std::{
-    collections::{HashMap, VecDeque},
-    time::Instant,
-};
+use std::collections::{HashMap, VecDeque};
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 use sample::{Sample, SampleData};
 use voice::Voice;
@@ -195,7 +198,9 @@ impl KSynth {
         self.polyphony = 0;
     }
 
-    pub fn fill_buffer(&mut self, buffer: &mut [f32], buffer_size: usize) {
+    pub fn fill_buffer(&mut self, buffer: &mut [f32]) -> bool {
+        let buffer_size = buffer.len();
+
         let channel = match self.num_channel {
             Channel::Mono => 1,
             Channel::Stereo => 2,
@@ -204,7 +209,7 @@ impl KSynth {
         let frame_count = buffer_size / channel;
 
         if frame_count == 0 {
-            return;
+            return false;
         }
 
         let midi_cmds = std::mem::take(&mut self.midi_queue);
@@ -352,6 +357,8 @@ impl KSynth {
         // Remove inactive voices
         self.voices.retain(|v| v.get_is_active());
         self.polyphony = self.voices.len();
+
+        true
     }
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
