@@ -4,7 +4,7 @@ pub mod voice;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use sample::{Sample, SampleData};
@@ -12,8 +12,7 @@ use voice::Voice;
 
 pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voice>() as u32);
 
-const FADE_IN_DURATION: f32 = 0.01;
-const FADE_OUT_DURATION: f32 = 0.05;
+const FADE_OUT_DURATION: Duration = Duration::from_millis(100);
 
 /// Returns the size of a `Voice` in bytes.
 pub fn get_voice_size_byte() -> usize {
@@ -46,8 +45,7 @@ pub enum Channel {
 pub struct KSynth {
     midi_queue: Vec<u32>,
     sample_rate: u32,
-    fade_in_duration: f32,
-    fade_out_duration: f32,
+    fade_out_duration: Duration,
     rendering_time: f32,
     samples: Arc<Mutex<HashMap<u8, Sample>>>,
     num_channel: Channel,
@@ -68,14 +66,12 @@ impl KSynth {
         sample_rate: u32,
         num_channel: Channel,
         max_polyphony: u32,
-        fade_in_duration: Option<f32>,
-        fade_out_duration: Option<f32>,
+        fade_out_duration: Option<Duration>,
         samples: Arc<Mutex<HashMap<u8, Sample>>>,
     ) -> Self {
         let synth = Self {
             midi_queue: Vec::new(),
             sample_rate,
-            fade_in_duration: fade_in_duration.unwrap_or(FADE_IN_DURATION),
             fade_out_duration: fade_out_duration.unwrap_or(FADE_OUT_DURATION),
             rendering_time: 0.0,
             samples,
@@ -93,24 +89,12 @@ impl KSynth {
         self.midi_queue.push(cmd);
     }
 
-    pub fn get_fade_in_duration(&self) -> f32 {
-        self.fade_in_duration
-    }
-
-    pub fn get_fade_out_duration(&self) -> f32 {
+    pub fn get_fade_out_duration(&self) -> Duration {
         self.fade_out_duration
     }
 
-    pub fn set_fade_in_duration(&mut self, fade_in_duration: f32) {
-        self.fade_in_duration = fade_in_duration;
-    }
-
-    pub fn set_fade_out_duration(&mut self, fade_out_duration: f32) {
+    pub fn set_fade_out_duration(&mut self, fade_out_duration: Duration) {
         self.fade_out_duration = fade_out_duration;
-    }
-
-    pub fn reset_fade_in_duration(&mut self) {
-        self.fade_in_duration = FADE_IN_DURATION;
     }
 
     pub fn reset_fade_out_duration(&mut self) {
@@ -215,7 +199,7 @@ impl KSynth {
                             let samples_since_release =
                                 voice.current_sample_index() - release_start;
                             let fade_samples =
-                                (self.sample_rate as f32 * self.fade_out_duration) as usize;
+                                (self.sample_rate as f32 * self.fade_out_duration.as_secs_f32()) as usize;
 
                             // Fade out calculation
                             amplitude *=
@@ -224,16 +208,6 @@ impl KSynth {
                             if samples_since_release >= fade_samples {
                                 voice.set_is_active(false);
                             }
-                        }
-                    }
-
-                    // Fade in processing
-                    if !voice.get_is_releasing() {
-                        let fade_in_samples =
-                            (self.sample_rate as f32 * self.fade_in_duration) as usize;
-                        let samples_since_start = voice.current_sample_index();
-                        if samples_since_start < fade_in_samples {
-                            amplitude = samples_since_start as f32 / fade_in_samples as f32;
                         }
                     }
 
@@ -319,11 +293,24 @@ impl KSynth {
     }
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
-        let voice = Voice::new(channel, note, velocity);
-        if self.voices.len() >= self.max_polyphony as usize {
-            self.voices.pop_back();
+        if self.polyphony >= self.max_polyphony as usize {
+            let min_index = self
+                .voices
+                .iter()
+                .position(|voice| voice.get_is_active() == false)
+                .unwrap_or(0);
+
+            if let Some(voice_to_remove) = self.voices.get_mut(min_index) {
+                voice_to_remove.set_is_active(false);
+            }
+
+            self.voices.remove(min_index);
         }
-        self.voices.push_front(voice);
+
+        let voice = Voice::new(channel, note, velocity);
+
+        self.voices.push_back(voice);
+        self.polyphony = self.voices.len();
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {
@@ -332,5 +319,8 @@ impl KSynth {
                 voice.set_is_releasing(true);
             }
         }
+
+        self.voices.retain(|v| v.get_is_active());
+        self.polyphony = self.voices.len();
     }
 }
