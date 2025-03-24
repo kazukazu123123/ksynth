@@ -294,17 +294,7 @@ impl KSynth {
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
         if self.polyphony >= self.max_polyphony as usize {
-            let min_index = self
-                .voices
-                .iter()
-                .position(|voice| voice.get_is_active() == false)
-                .unwrap_or(0);
-
-            if let Some(voice_to_remove) = self.voices.get_mut(min_index) {
-                voice_to_remove.set_is_active(false);
-            }
-
-            self.voices.remove(min_index);
+            self.voices.pop_front();
         }
 
         let voice = Voice::new(channel, note, velocity);
