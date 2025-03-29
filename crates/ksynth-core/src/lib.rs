@@ -146,7 +146,7 @@ impl KSynth {
         self.max_polyphony = max_polyphony.min(MAX_POLYPHONY) as usize;
 
         // Reset current polyphony
-        self.polyphony = 0;
+        self.polyphony = self.voices.len();
     }
 
     pub fn fill_buffer(&mut self, buffer: &mut [f32]) -> bool {
