@@ -2,8 +2,3 @@
 name = "ksynth-core"
 version.workspace = true
 edition.workspace = true
-
-[dependencies]
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-web-time = "1.1.0"
