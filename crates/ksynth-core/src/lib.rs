@@ -130,6 +130,14 @@ impl KSynth {
     }
 
     pub fn set_samples(&mut self, samples: Arc<Mutex<HashMap<u8, Sample>>>) {
+        // Stop all sound
+        for voice in self.voices.iter_mut() {
+            voice.set_is_active(false);
+        }
+
+        // Remove inactive voice from voices array
+        self.voices.retain(|v| v.get_is_active());
+
         self.samples = samples;
     }
 
