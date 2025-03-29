@@ -129,6 +129,10 @@ impl KSynth {
         self.max_polyphony as u32
     }
 
+    pub fn set_samples(&mut self, samples: Arc<Mutex<HashMap<u8, Sample>>>) {
+        self.samples = samples;
+    }
+
     pub fn set_max_polyphony(&mut self, max_polyphony: u32) {
         // Stop all sound
         for voice in self.voices.iter_mut() {
@@ -204,8 +208,9 @@ impl KSynth {
                         if let Some(release_start) = voice.get_release_start_index() {
                             let samples_since_release =
                                 voice.current_sample_index() - release_start;
-                            let fade_samples =
-                                (self.sample_rate as f32 * self.fade_out_duration.as_secs_f32()) as usize;
+                            let fade_samples = (self.sample_rate as f32
+                                * self.fade_out_duration.as_secs_f32())
+                                as usize;
 
                             // Fade out calculation
                             amplitude *=
