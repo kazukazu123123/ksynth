@@ -43,6 +43,7 @@ pub enum Channel {
 }
 
 pub struct KSynth {
+    velocity_lut: [f32; 128],
     midi_queue: Vec<u32>,
     sample_rate: u32,
     fade_out_duration: Duration,
@@ -68,7 +69,8 @@ impl KSynth {
         fade_out_duration: Option<Duration>,
         samples: Arc<Mutex<HashMap<u8, Sample>>>,
     ) -> Self {
-        let synth = Self {
+        let mut synth = Self {
+            velocity_lut: [0.0; 128],
             midi_queue: Vec::new(),
             sample_rate,
             fade_out_duration: fade_out_duration.unwrap_or(FADE_OUT_DURATION),
@@ -79,6 +81,10 @@ impl KSynth {
             polyphony: 0,
             max_polyphony: max_polyphony.min(MAX_POLYPHONY) as usize,
         };
+
+        for i in 0..128 {
+            synth.velocity_lut[i] = f32::min((i as f32 / 127.0).powf(2.5) + 0.03, 1.0);
+        }
 
         synth
     }
@@ -299,7 +305,7 @@ impl KSynth {
         let voice = Voice::new(channel, note, velocity);
 
         self.voices.push_back(voice);
-        self.polyphony = self.voices.len();
+        self.polyphony += 1;
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {
