@@ -310,6 +310,7 @@ impl KSynth {
         for voice in self.voices.iter_mut() {
             if voice.get_channel() == channel && voice.get_note() == note {
                 voice.set_is_releasing(true);
+                break;
             }
         }
     }
