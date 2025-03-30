@@ -2,7 +2,7 @@ pub mod sample;
 pub mod voice;
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -49,7 +49,7 @@ pub struct KSynth {
     rendering_time: f32,
     samples: Arc<Mutex<HashMap<u8, Sample>>>,
     num_channel: Channel,
-    voices: VecDeque<voice::Voice>,
+    voices: Vec<Voice>,
     polyphony: usize,
     max_polyphony: usize,
 }
@@ -75,7 +75,7 @@ impl KSynth {
             rendering_time: 0.0,
             samples,
             num_channel,
-            voices: VecDeque::with_capacity(max_polyphony as usize),
+            voices: Vec::with_capacity(max_polyphony as usize),
             polyphony: 0,
             max_polyphony: max_polyphony.min(MAX_POLYPHONY) as usize,
         };
@@ -293,12 +293,12 @@ impl KSynth {
         }
 
         if self.polyphony >= self.max_polyphony as usize {
-            self.voices.pop_front();
+            self.voices.remove(0);
         }
 
         let voice = Voice::new(channel, note, velocity);
 
-        self.voices.push_back(voice);
+        self.voices.push(voice);
         self.polyphony = self.voices.len();
     }
 
