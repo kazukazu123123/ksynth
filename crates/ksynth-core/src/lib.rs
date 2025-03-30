@@ -52,7 +52,6 @@ pub struct KSynth {
     voices: VecDeque<voice::Voice>,
     polyphony: usize,
     max_polyphony: usize,
-    cpu_usage_history: Vec<f32>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -79,7 +78,6 @@ impl KSynth {
             voices: VecDeque::with_capacity(max_polyphony as usize),
             polyphony: 0,
             max_polyphony: max_polyphony.min(MAX_POLYPHONY) as usize,
-            cpu_usage_history: Vec::new(),
         };
 
         synth
@@ -103,16 +101,6 @@ impl KSynth {
 
     pub fn get_rendering_time(&self) -> f32 {
         self.rendering_time
-    }
-
-    pub fn get_rendering_time_smoothed(&self) -> f32 {
-        let smoothing_factor = 0.9;
-        let mut smoothed_rendering_time = self.rendering_time;
-        for time in self.cpu_usage_history.iter() {
-            smoothed_rendering_time =
-                smoothing_factor * smoothed_rendering_time + (1.0 - smoothing_factor) * time;
-        }
-        smoothed_rendering_time
     }
 
     pub fn get_polyphony(&self) -> u32 {
@@ -291,11 +279,6 @@ impl KSynth {
         let elapsed_time_ms = elapsed_time.as_secs_f32() * 1e3;
         let rendering_time = elapsed_time_ms / buffer_size as f32;
         self.rendering_time = rendering_time * 100.0;
-
-        self.cpu_usage_history.push(rendering_time);
-        if self.cpu_usage_history.len() > 10 {
-            self.cpu_usage_history.remove(0);
-        }
 
         // Remove inactive voices
         self.voices.retain(|v| v.get_is_active());
