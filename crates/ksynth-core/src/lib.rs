@@ -312,8 +312,5 @@ impl KSynth {
                 voice.set_is_releasing(true);
             }
         }
-
-        self.voices.retain(|v| v.get_is_active());
-        self.polyphony = self.voices.len();
     }
 }
