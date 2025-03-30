@@ -212,7 +212,7 @@ impl KSynth {
                                 voice.current_sample_index() - release_start;
                             let fade_samples = (self.sample_rate as f32
                                 * self.fade_out_duration.as_secs_f32())
-                            .round() as usize;
+                                as usize;
 
                             if samples_since_release >= fade_samples {
                                 voice.set_is_active(false);
