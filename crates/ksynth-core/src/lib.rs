@@ -306,6 +306,10 @@ impl KSynth {
     }
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
+        if channel == 9 {
+            return;
+        }
+
         if self.polyphony >= self.max_polyphony as usize {
             self.voices.pop_front();
         }
@@ -317,6 +321,10 @@ impl KSynth {
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {
+        if channel == 9 {
+            return;
+        }
+
         for voice in self.voices.iter_mut() {
             if voice.get_channel() == channel && voice.get_note() == note {
                 voice.set_is_releasing(true);
