@@ -218,8 +218,7 @@ impl KSynth {
                     }
 
                     let vel = voice.get_velocity() as f32;
-                    let log_vel = vel / 127.0;
-                    let velocity_factor = f32::min(log_vel.powf(2.5) + 0.03, 1.0);
+                    let velocity_factor = self.velocity_lut[vel as usize];
                     amplitude *= velocity_factor;
 
                     // Sample processing
