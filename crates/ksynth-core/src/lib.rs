@@ -182,6 +182,8 @@ impl KSynth {
             }
         }
 
+        let samples_guard = self.samples.lock().unwrap();
+
         let rendering_time_start = Instant::now();
 
         for frame in 0..frame_count {
@@ -189,11 +191,7 @@ impl KSynth {
 
             // Process active voices
             for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
-                if voice.get_channel() == 9 {
-                    continue;
-                }
-
-                if let Some(sample) = self.samples.lock().unwrap().get(&voice.get_note()) {
+                if let Some(sample) = samples_guard.get(&voice.get_note()) {
                     let sample_data = sample.get_sample_data();
                     let sample_length = sample.sample_length();
                     let sample_loop = sample.get_sample_loop();
