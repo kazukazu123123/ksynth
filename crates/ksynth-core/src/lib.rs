@@ -310,7 +310,14 @@ impl KSynth {
         }
 
         if self.polyphony >= self.max_polyphony as usize {
-            self.voices.remove(0);
+            // Remove the most quiet voice
+            let min_index = self.voices
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, v)| v.get_velocity())
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            self.voices.remove(min_index);
             self.polyphony -= 1;
         }
 
