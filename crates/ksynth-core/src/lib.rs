@@ -14,6 +14,20 @@ pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voi
 
 const FADE_OUT_DURATION: Duration = Duration::from_millis(100);
 
+const fn precompute_velocity_lut() -> [f32; 128] {
+    let mut lut = [0.0; 128];
+    let mut i = 0;
+    while i < 128 {
+        let x = i as f32 / 127.0;
+        let x2 = x * x;
+        let x3 = x2 * x;
+
+        lut[i] = (0.6 * x2 + 0.4 * x3 + 0.03).min(1.0);
+        i += 1;
+    }
+    lut
+}
+
 /// Returns the size of a `Voice` in bytes.
 pub fn get_voice_size_byte() -> usize {
     std::mem::size_of::<Voice>()
@@ -70,7 +84,7 @@ impl KSynth {
         samples: Arc<RwLock<HashMap<u8, Sample>>>,
     ) -> Self {
         let mut synth = Self {
-            velocity_lut: [0.0; 128],
+            velocity_lut: precompute_velocity_lut(),
             midi_queue: Vec::new(),
             sample_rate,
             fade_out_duration: fade_out_duration.unwrap_or(FADE_OUT_DURATION),
