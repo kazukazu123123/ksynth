@@ -3,7 +3,7 @@ pub mod voice;
 
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
@@ -48,7 +48,7 @@ pub struct KSynth {
     sample_rate: u32,
     fade_out_duration: Duration,
     rendering_time: f32,
-    samples: Arc<Mutex<HashMap<u8, Sample>>>,
+    samples: Arc<RwLock<HashMap<u8, Sample>>>,
     num_channel: Channel,
     voices: VecDeque<voice::Voice>,
     polyphony: usize,
@@ -67,7 +67,7 @@ impl KSynth {
         num_channel: Channel,
         max_polyphony: u32,
         fade_out_duration: Option<Duration>,
-        samples: Arc<Mutex<HashMap<u8, Sample>>>,
+        samples: Arc<RwLock<HashMap<u8, Sample>>>,
     ) -> Self {
         let mut synth = Self {
             velocity_lut: [0.0; 128],
@@ -117,7 +117,7 @@ impl KSynth {
         self.max_polyphony as u32
     }
 
-    pub fn set_samples(&mut self, samples: Arc<Mutex<HashMap<u8, Sample>>>) {
+    pub fn set_samples(&mut self, samples: Arc<RwLock<HashMap<u8, Sample>>>) {
         // Stop all sound
         for voice in self.voices.iter_mut() {
             voice.set_is_active(false);
@@ -182,7 +182,7 @@ impl KSynth {
             }
         }
 
-        let samples_guard = self.samples.lock().unwrap();
+        let samples_guard = self.samples.read().unwrap();
 
         let rendering_time_start = Instant::now();
 
