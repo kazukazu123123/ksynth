@@ -319,19 +319,16 @@ impl KSynth {
         }
 
         if self.polyphony >= self.max_polyphony {
-            if let Some((min_index, _)) = self
+            if let Some(quietest_voice_index) = self
                 .voices
                 .iter()
                 .enumerate()
-                .min_by(|a, b| a.1.get_velocity().cmp(&b.1.get_velocity()))
+                .filter(|(_, v)| v.get_is_active())
+                .min_by_key(|(_, v)| v.get_velocity())
+                .map(|(index, _)| index)
             {
-                self.voices.remove(min_index);
+                self.voices.remove(quietest_voice_index);
                 self.polyphony -= 1;
-            } else {
-                if !self.voices.is_empty() {
-                    self.voices.remove(0);
-                    self.polyphony -= 1;
-                }
             }
         }
 
