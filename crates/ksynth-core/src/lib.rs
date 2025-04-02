@@ -305,20 +305,34 @@ impl KSynth {
     }
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
+        if channel > 15 || note > 127 || velocity > 127 {
+            return;
+        }
+
         if channel == 9 {
             return;
         }
 
-        if self.polyphony >= self.max_polyphony as usize {
-            // Remove the most quiet voice
-            let min_index = self.voices
+        if velocity == 0 {
+            self.note_off(channel, note);
+            return;
+        }
+
+        if self.polyphony >= self.max_polyphony {
+            if let Some((min_index, _)) = self
+                .voices
                 .iter()
                 .enumerate()
-                .min_by_key(|(_, v)| v.get_velocity())
-                .map(|(i, _)| i)
-                .unwrap_or(0);
-            self.voices.remove(min_index);
-            self.polyphony -= 1;
+                .min_by(|a, b| a.1.get_velocity().cmp(&b.1.get_velocity()))
+            {
+                self.voices.remove(min_index);
+                self.polyphony -= 1;
+            } else {
+                if !self.voices.is_empty() {
+                    self.voices.remove(0);
+                    self.polyphony -= 1;
+                }
+            }
         }
 
         let voice = Voice::new(channel, note, velocity);
@@ -327,6 +341,10 @@ impl KSynth {
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {
+        if channel > 15 || note > 127 {
+            return;
+        }
+
         if channel == 9 {
             return;
         }
