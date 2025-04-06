@@ -201,7 +201,7 @@ impl KSynth {
                 // Control Change
                 0xB0 => {
                     match data1 {
-                        // Pan control change
+                        // Pan
                         0x0A => {
                             let pan = (data2 as f32 / 127.0) * 2.0 - 1.0;
                             self.midi_channel[channel as usize].set_pan(pan);
