@@ -234,41 +234,34 @@ impl KSynth {
                     amplitude *= velocity_factor;
 
                     // Sample processing
-                    match (self.num_channel, sample_data) {
-                        (Channel::Mono, SampleData::Mono(data)) => {
-                            if !data.is_empty() {
-                                let sample_index = voice.current_sample_index() % data.len();
-                                let sample_value =
-                                    data[sample_index] as f32 / i16::MAX as f32 * amplitude;
-                                buffer[buffer_index] += sample_value;
+                    let sample_data_len = match sample_data {
+                        SampleData::Mono(data) => data.len(),
+                        SampleData::Stereo(data) => data.len(),
+                    };
+
+                    if sample_data_len != 0 {
+                        let sample_index = voice.current_sample_index() % sample_data_len;
+                        let (left, right) = match sample_data {
+                            SampleData::Mono(data) => {
+                                let value = data[sample_index] as f32 / i16::MAX as f32;
+                                (value, value)
                             }
-                        }
-                        (Channel::Mono, SampleData::Stereo(data)) => {
-                            if !data.is_empty() {
-                                let sample_index = voice.current_sample_index() % data.len();
+                            SampleData::Stereo(data) => {
                                 let (left, right) = data[sample_index];
-                                let sample_value =
-                                    ((left + right) / 2) as f32 / i16::MAX as f32 * amplitude;
-                                buffer[buffer_index] += sample_value;
+                                (
+                                    left as f32 / i16::MAX as f32,
+                                    right as f32 / i16::MAX as f32
+                                )
                             }
-                        }
-                        (Channel::Stereo, SampleData::Mono(data)) => {
-                            if !data.is_empty() {
-                                let sample_index = voice.current_sample_index() % data.len();
-                                let sample_value =
-                                    data[sample_index] as f32 / i16::MAX as f32 * amplitude;
-                                buffer[buffer_index] += sample_value;
-                                buffer[buffer_index + 1] += sample_value;
+                        };
+
+                        match self.num_channel {
+                            Channel::Mono => {
+                                buffer[buffer_index] += (left + right) * 0.5 * amplitude;
                             }
-                        }
-                        (Channel::Stereo, SampleData::Stereo(data)) => {
-                            if !data.is_empty() {
-                                let sample_index = voice.current_sample_index() % data.len();
-                                let (left, right) = data[sample_index];
-                                let left_value = left as f32 / i16::MAX as f32 * amplitude;
-                                let right_value = right as f32 / i16::MAX as f32 * amplitude;
-                                buffer[buffer_index] += left_value;
-                                buffer[buffer_index + 1] += right_value;
+                            Channel::Stereo => {
+                                buffer[buffer_index] += left * amplitude;
+                                buffer[buffer_index + 1] += right * amplitude;
                             }
                         }
                     }
