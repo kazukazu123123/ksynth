@@ -22,11 +22,11 @@ impl MidiChannel {
         self.channel
     }
 
-    pub fn set_pan(&mut self, pan: f32) {
-        self.pan = pan;
-    }
-
     pub fn get_pan(&self) -> f32 {
         self.pan
+    }
+
+    pub fn set_pan(&mut self, pan: f32) {
+        self.pan = pan;
     }
 }
