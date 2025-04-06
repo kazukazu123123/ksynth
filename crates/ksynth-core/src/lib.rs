@@ -1,6 +1,8 @@
+pub mod midi_channel;
 pub mod sample;
 pub mod voice;
 
+use midi_channel::MidiChannel;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -59,6 +61,7 @@ pub enum Channel {
 pub struct KSynth {
     velocity_lut: [f32; 128],
     midi_queue: Vec<u32>,
+    midi_channel: [MidiChannel; 16],
     sample_rate: u32,
     fade_out_duration: Duration,
     rendering_time: f32,
@@ -86,6 +89,7 @@ impl KSynth {
         let mut synth = Self {
             velocity_lut: precompute_velocity_lut(),
             midi_queue: Vec::new(),
+            midi_channel: [MidiChannel::default(); 16],
             sample_rate,
             fade_out_duration: fade_out_duration.unwrap_or(FADE_OUT_DURATION),
             rendering_time: 0.0,
@@ -176,21 +180,34 @@ impl KSynth {
         let midi_cmds = std::mem::take(&mut self.midi_queue);
         for cmd in midi_cmds {
             let status = (cmd & 0xFF) as u8;
-            let note = ((cmd >> 8) & 0xFF) as u8;
-            let velocity = ((cmd >> 16) & 0xFF) as u8;
+            let data1 = ((cmd >> 8) & 0xFF) as u8;
+            let data2 = ((cmd >> 16) & 0xFF) as u8;
 
             let channel = (status & 0x0F) as u8;
 
             match status & 0xF0 {
+                // Note On
                 0x90 => {
-                    if velocity > 0 {
-                        self.note_on(channel, note, velocity);
+                    if data2 > 0 {
+                        self.note_on(channel, data1, data2);
                     } else {
-                        self.note_off(channel, note);
+                        self.note_off(channel, data1);
                     }
                 }
+                // Note Off
                 0x80 => {
-                    self.note_off(channel, note);
+                    self.note_off(channel, data1);
+                }
+                // Control Change
+                0xB0 => {
+                    match data1 {
+                        // Pan control change
+                        0x0A => {
+                            let pan = (data2 as f32 / 127.0) * 2.0 - 1.0;
+                            self.midi_channel[channel as usize].set_pan(pan);
+                        }
+                        _ => {}
+                    }
                 }
                 _ => {}
             }
@@ -250,18 +267,23 @@ impl KSynth {
                                 let (left, right) = data[sample_index];
                                 (
                                     left as f32 / i16::MAX as f32,
-                                    right as f32 / i16::MAX as f32
+                                    right as f32 / i16::MAX as f32,
                                 )
                             }
                         };
+
+                        // Pan handling (stereo)
+                        let pan = self.midi_channel[voice.get_channel() as usize].get_pan();
+                        let left_pan = ((1.0 - pan) * 0.5).sqrt();
+                        let right_pan = ((1.0 + pan) * 0.5).sqrt();
 
                         match self.num_channel {
                             Channel::Mono => {
                                 buffer[buffer_index] += (left + right) * 0.5 * amplitude;
                             }
                             Channel::Stereo => {
-                                buffer[buffer_index] += left * amplitude;
-                                buffer[buffer_index + 1] += right * amplitude;
+                                buffer[buffer_index] += left * amplitude * left_pan;
+                                buffer[buffer_index + 1] += right * amplitude * right_pan;
                             }
                         }
                     }
