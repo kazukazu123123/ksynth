@@ -58,6 +58,52 @@ pub enum Channel {
     Stereo,
 }
 
+impl From<Channel> for usize {
+    fn from(channel: Channel) -> usize {
+        match channel {
+            Channel::Mono => 1,
+            Channel::Stereo => 2,
+        }
+    }
+}
+
+macro_rules! impl_from_channel {
+    ($($t:ty),*) => {
+        $(
+            impl From<Channel> for $t {
+                fn from(channel: Channel) -> $t {
+                    let value: usize = channel.into();
+                    value as $t
+                }
+            }
+        )*
+    }
+}
+
+impl_from_channel!(u8, u16, u32, i32, f32, f64);
+
+macro_rules! impl_as_methods {
+    ($($name:ident -> $t:ty),*) => {
+        $(
+            pub fn $name(&self) -> $t {
+                (*self).into()
+            }
+        )*
+    }
+}
+
+impl Channel {
+    impl_as_methods! {
+        as_usize -> usize,
+        as_u8 -> u8,
+        as_u16 -> u16,
+        as_u32 -> u32,
+        as_i32 -> i32,
+        as_f32 -> f32,
+        as_f64 -> f64
+    }
+}
+
 pub struct KSynth {
     velocity_lut: [f32; 128],
     midi_queue: Vec<u32>,
@@ -70,12 +116,6 @@ pub struct KSynth {
     voices: Vec<Voice>,
     polyphony: usize,
     max_polyphony: usize,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum SampleMode {
-    Mono,
-    Stereo,
 }
 
 impl KSynth {
@@ -166,12 +206,12 @@ impl KSynth {
     pub fn fill_buffer(&mut self, buffer: &mut [f32]) -> bool {
         let buffer_size = buffer.len();
 
-        let channel = match self.num_channel {
+        let num_channel = match self.num_channel {
             Channel::Mono => 1,
             Channel::Stereo => 2,
         };
 
-        let frame_count = buffer_size / channel;
+        let frame_count = buffer_size / num_channel;
 
         if frame_count == 0 {
             return false;
@@ -258,7 +298,7 @@ impl KSynth {
         let rendering_time_start = Instant::now();
 
         for frame in 0..frame_count {
-            let buffer_index = frame * channel;
+            let buffer_index = frame * num_channel;
 
             // Process active voices
             for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
