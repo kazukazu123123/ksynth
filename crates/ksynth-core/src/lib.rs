@@ -21,10 +21,11 @@ const fn precompute_velocity_lut() -> [f32; 128] {
     let mut i = 0;
     while i < 128 {
         let x = i as f32 / 127.0;
+        // Approximate x^2.5 using x * x * sqrt(x)
+        // sqrt(x) approximation using one iteration of Newton's method
         let x2 = x * x;
-        let x3 = x2 * x;
-
-        lut[i] = (0.6 * x2 + 0.4 * x3 + 0.03).min(1.0);
+        let sqrt_x = 0.5 * (x + 1.0); // Simple approximation of sqrt(x)
+        lut[i] = f32::min(x2 * sqrt_x + 0.03, 1.0);
         i += 1;
     }
     lut
@@ -126,7 +127,7 @@ impl KSynth {
         fade_out_duration: Option<Duration>,
         samples: Arc<RwLock<HashMap<u8, Sample>>>,
     ) -> Self {
-        let mut synth = Self {
+        let synth = Self {
             velocity_lut: precompute_velocity_lut(),
             midi_queue: Vec::new(),
             midi_channel: [MidiChannel::default(); 16],
@@ -139,10 +140,6 @@ impl KSynth {
             polyphony: 0,
             max_polyphony: max_polyphony.min(MAX_POLYPHONY) as usize,
         };
-
-        for i in 0..128 {
-            synth.velocity_lut[i] = f32::min((i as f32 / 127.0).powf(2.5) + 0.03, 1.0);
-        }
 
         synth
     }
