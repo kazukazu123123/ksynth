@@ -243,6 +243,22 @@ impl KSynth {
                             let pan = (data2 as f32 / 127.0) * 2.0 - 1.0;
                             self.midi_channel[channel as usize].set_pan(pan);
                         }
+                        // Damper pedal
+                        0x40 => {
+                            let is_sustain = data2 > 63;
+                            self.midi_channel[channel as usize].set_sustain(is_sustain);
+
+                            if !is_sustain {
+                                for voice in self.voices.iter_mut() {
+                                    if voice.get_channel() == channel
+                                        && !voice.get_is_key_down()
+                                        && !voice.get_is_releasing()
+                                    {
+                                        voice.set_is_releasing(true);
+                                    }
+                                }
+                            }
+                        }
                         // RPN MSB: CC101 = 0
                         0x65 => {
                             // CC101 (RPN MSB)
@@ -269,7 +285,6 @@ impl KSynth {
                         _ => {}
                     }
                 }
-
                 0xE0 => {
                     // Reconstruct 14bit pitch bend value (0-16383) (Value = 128 * MSB + LSB)
                     let raw_value = ((data1 as u16) & 0x7F) | (((data2 as u16) & 0x7F) << 7);
@@ -279,7 +294,8 @@ impl KSynth {
                     let normalized = pitch_bend as f32 / 8192.0;
 
                     // Apply bend range in semitones
-                    let bend_range = self.midi_channel[channel as usize].get_bend_range_semitone() as f32;
+                    let bend_range =
+                        self.midi_channel[channel as usize].get_bend_range_semitone() as f32;
                     let semitones = normalized * bend_range;
 
                     let pitch_factor = 2.0f32.powf(semitones / 12.0);
@@ -451,7 +467,11 @@ impl KSynth {
 
         for voice in self.voices.iter_mut() {
             if voice.get_channel() == channel && voice.get_note() == note {
-                voice.set_is_releasing(true);
+                voice.set_is_key_down(false);
+
+                if !self.midi_channel[channel as usize].get_sustain() {
+                    voice.set_is_releasing(true);
+                }
             }
         }
     }

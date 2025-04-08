@@ -3,6 +3,7 @@ pub struct Voice {
     release_start_index: Option<f32>,
     is_active: bool,
     is_releasing: bool,
+    is_key_down: bool,
     channel: u8,
     note: u8,
     velocity: u8,
@@ -15,6 +16,7 @@ impl Voice {
             release_start_index: None,
             is_active: true,
             is_releasing: false,
+            is_key_down: true,
             channel,
             note,
             velocity,
@@ -49,6 +51,10 @@ impl Voice {
         self.is_active
     }
 
+    pub fn set_is_active(&mut self, is_active: bool) {
+        self.is_active = is_active;
+    }
+
     pub fn get_is_releasing(&self) -> bool {
         self.is_releasing
     }
@@ -57,8 +63,12 @@ impl Voice {
         self.velocity
     }
 
-    pub fn set_is_active(&mut self, is_active: bool) {
-        self.is_active = is_active;
+    pub fn get_is_key_down(&self) -> bool {
+        self.is_key_down
+    }
+
+    pub fn set_is_key_down(&mut self, is_key_down: bool) {
+        self.is_key_down = is_key_down;
     }
 
     pub fn set_is_releasing(&mut self, is_releasing: bool) {

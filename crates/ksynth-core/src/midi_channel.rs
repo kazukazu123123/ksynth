@@ -6,6 +6,7 @@ pub struct MidiChannel {
     rpn_lsb: u8,
     bend_range_semitone: u8,
     pitch_factor: f32,
+    sustain: bool,
 }
 
 impl Default for MidiChannel {
@@ -17,6 +18,7 @@ impl Default for MidiChannel {
             rpn_lsb: 0,
             bend_range_semitone: 2,
             pitch_factor: 1.0,
+            sustain: false,
         }
     }
 }
@@ -30,6 +32,7 @@ impl MidiChannel {
             rpn_lsb: 0,
             bend_range_semitone: 2,
             pitch_factor: 1.0,
+            sustain: false,
         }
     }
 
@@ -75,5 +78,13 @@ impl MidiChannel {
 
     pub fn get_pitch_factor(&self) -> f32 {
         self.pitch_factor
+    }
+
+    pub fn set_sustain(&mut self, sustain: bool) {
+        self.sustain = sustain;
+    }
+
+    pub fn get_sustain(&self) -> bool {
+        self.sustain
     }
 }
