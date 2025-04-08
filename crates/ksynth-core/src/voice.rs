@@ -1,6 +1,6 @@
 pub struct Voice {
-    sample_index: usize,
-    release_start_index: Option<usize>,
+    sample_index: f32,
+    release_start_index: Option<f32>,
     is_active: bool,
     is_releasing: bool,
     channel: u8,
@@ -11,7 +11,7 @@ pub struct Voice {
 impl Voice {
     pub fn new(channel: u8, note: u8, velocity: u8) -> Self {
         Self {
-            sample_index: 0,
+            sample_index: 0.0,
             release_start_index: None,
             is_active: true,
             is_releasing: false,
@@ -21,20 +21,20 @@ impl Voice {
         }
     }
 
-    pub fn current_sample_index(&self) -> usize {
+    pub fn current_sample_index(&self) -> f32 {
         self.sample_index
     }
 
-    pub fn increment_sample_index(&mut self) {
-        self.sample_index += 1;
+    pub fn increment_sample_index(&mut self, increment: f32) {
+        self.sample_index += increment;
     }
 
-    pub fn set_current_sample_index(&mut self, index: usize) {
+    pub fn set_current_sample_index(&mut self, index: f32) {
         self.sample_index = index;
     }
 
     pub fn reset_sample_index(&mut self) {
-        self.sample_index = 0;
+        self.sample_index = 0.0;
     }
 
     pub fn get_channel(&self) -> u8 {
@@ -70,7 +70,7 @@ impl Voice {
         }
     }
 
-    pub fn get_release_start_index(&self) -> Option<usize> {
+    pub fn get_release_start_index(&self) -> Option<f32> {
         self.release_start_index
     }
 }
