@@ -279,7 +279,10 @@ impl KSynth {
                             if self.midi_channel[channel as usize].get_rpn_msb() == 0
                                 && self.midi_channel[channel as usize].get_rpn_lsb() == 0
                             {
-                                // TODO: Handle Data Entry MSB: CC6
+                                // Set pitch bend range in semitones
+                                let bend_range = data2 as u8;
+                                self.midi_channel[channel as usize]
+                                    .set_bend_range_semitone(bend_range);
                             }
                         }
                         _ => {}
