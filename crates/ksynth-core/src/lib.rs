@@ -371,6 +371,13 @@ impl KSynth {
     }
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
+        // Check for sample is loaded
+        let samples_guard = self.samples.read().unwrap();
+        if !samples_guard.contains_key(&note) {
+            return;
+        }
+        drop(samples_guard);
+
         if channel > 15 || note > 127 || velocity > 127 {
             return;
         }
@@ -404,6 +411,13 @@ impl KSynth {
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {
+        // Check for sample is loaded
+        let samples_guard = self.samples.read().unwrap();
+        if !samples_guard.contains_key(&note) {
+            return;
+        }
+        drop(samples_guard);
+
         if channel > 15 || note > 127 {
             return;
         }
