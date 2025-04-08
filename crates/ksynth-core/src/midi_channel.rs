@@ -4,7 +4,7 @@ pub struct MidiChannel {
     pan: f32,
     rpn_msb: u8,
     rpn_lsb: u8,
-    bend_range: u8,
+    bend_range_semitone: u8,
     pitch_factor: f32,
 }
 
@@ -15,7 +15,7 @@ impl Default for MidiChannel {
             pan: 0.0,
             rpn_msb: 0,
             rpn_lsb: 0,
-            bend_range: 2,
+            bend_range_semitone: 2,
             pitch_factor: 1.0,
         }
     }
@@ -28,7 +28,7 @@ impl MidiChannel {
             pan: 0.0,
             rpn_msb: 0,
             rpn_lsb: 0,
-            bend_range: 2,
+            bend_range_semitone: 2,
             pitch_factor: 1.0,
         }
     }
@@ -61,13 +61,12 @@ impl MidiChannel {
         self.rpn_lsb
     }
 
-    pub fn set_bend_range(&mut self, semitones: u8) {
-        self.bend_range = semitones;
-        println!("Pitch Bend Range set to {} semitones", semitones);
+    pub fn set_bend_range_semitone(&mut self, semitones: u8) {
+        self.bend_range_semitone = semitones;
     }
 
-    pub fn get_bend_range(&self) -> u8 {
-        self.bend_range
+    pub fn get_bend_range_semitone(&self) -> u8 {
+        self.bend_range_semitone
     }
 
     pub fn set_pitch_factor(&mut self, pitch_factor: f32) {

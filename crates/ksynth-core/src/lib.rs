@@ -279,7 +279,7 @@ impl KSynth {
                     let normalized = pitch_bend as f32 / 8192.0;
 
                     // Apply bend range in semitones
-                    let bend_range = self.midi_channel[channel as usize].get_bend_range() as f32;
+                    let bend_range = self.midi_channel[channel as usize].get_bend_range_semitone() as f32;
                     let semitones = normalized * bend_range;
 
                     let pitch_factor = 2.0f32.powf(semitones / 12.0);
