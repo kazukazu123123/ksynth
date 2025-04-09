@@ -55,53 +55,25 @@ pub fn calculate_voice_memory_usage(voice_count: usize) -> usize {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Channel {
-    Mono,
+    Mono = 1,
     Stereo,
 }
 
-impl From<Channel> for usize {
-    fn from(channel: Channel) -> usize {
-        match channel {
-            Channel::Mono => 1,
-            Channel::Stereo => 2,
+impl TryFrom<u8> for Channel {
+    type Error = &'static str;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Channel::Mono),
+            2 => Ok(Channel::Stereo),
+            _ => Err("Invalid value for Channel"),
         }
     }
 }
 
-macro_rules! impl_from_channel {
-    ($($t:ty),*) => {
-        $(
-            impl From<Channel> for $t {
-                fn from(channel: Channel) -> $t {
-                    let value: usize = channel.into();
-                    value as $t
-                }
-            }
-        )*
-    }
-}
-
-impl_from_channel!(u8, u16, u32, i32, f32, f64);
-
-macro_rules! impl_as_methods {
-    ($($name:ident -> $t:ty),*) => {
-        $(
-            pub fn $name(&self) -> $t {
-                (*self).into()
-            }
-        )*
-    }
-}
-
-impl Channel {
-    impl_as_methods! {
-        as_usize -> usize,
-        as_u8 -> u8,
-        as_u16 -> u16,
-        as_u32 -> u32,
-        as_i32 -> i32,
-        as_f32 -> f32,
-        as_f64 -> f64
+impl From<Channel> for u8 {
+    fn from(channel: Channel) -> Self {
+        channel as u8
     }
 }
 
