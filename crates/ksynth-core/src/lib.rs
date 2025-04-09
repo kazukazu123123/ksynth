@@ -59,23 +59,43 @@ pub enum Channel {
     Stereo,
 }
 
-impl TryFrom<u8> for Channel {
-    type Error = &'static str;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            1 => Ok(Channel::Mono),
-            2 => Ok(Channel::Stereo),
-            _ => Err("Invalid value for Channel"),
-        }
-    }
+macro_rules! impl_channel_from {
+    ($($t:ty),*) => {
+        $(
+            impl From<Channel> for $t {
+                fn from(channel: Channel) -> Self {
+                    channel as u8 as $t
+                }
+            }
+        )*
+    };
 }
 
-impl From<Channel> for u8 {
-    fn from(channel: Channel) -> Self {
-        channel as u8
-    }
+macro_rules! impl_channel_try_from {
+    ($($t:ty),*) => {
+        $(
+            impl TryFrom<$t> for Channel {
+                type Error = &'static str;
+
+                fn try_from(value: $t) -> Result<Self, Self::Error> {
+                    match value {
+                        1 => Ok(Channel::Mono),
+                        2 => Ok(Channel::Stereo),
+                        _ => Err("Invalid value for Channel"),
+                    }
+                }
+            }
+        )*
+    };
 }
+
+impl_channel_from!(u8, u16, u32, u64, u128, usize);
+impl_channel_from!(i8, i16, i32, i64, i128, isize);
+impl_channel_from!(f32, f64);
+impl_channel_from!(char);
+
+impl_channel_try_from!(u8, u16, u32, u64, u128, usize);
+impl_channel_try_from!(i8, i16, i32, i64, i128, isize);
 
 pub struct KSynth {
     velocity_lut: [f32; 128],
