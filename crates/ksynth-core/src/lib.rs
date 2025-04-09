@@ -136,6 +136,18 @@ impl KSynth {
         synth
     }
 
+    pub fn set_samples(&mut self, samples: Arc<RwLock<HashMap<u8, Sample>>>) {
+        // Stop all sound
+        for voice in self.voices.iter_mut() {
+            voice.set_is_active(false);
+        }
+
+        // Remove inactive voice from voices array
+        self.voices.retain(|v| v.get_is_active());
+
+        self.samples = samples;
+    }
+
     pub fn queue_midi_cmd(&mut self, cmd: u32) {
         self.midi_queue.push(cmd);
     }
@@ -162,18 +174,6 @@ impl KSynth {
 
     pub fn get_max_polyphony(&self) -> u32 {
         self.max_polyphony as u32
-    }
-
-    pub fn set_samples(&mut self, samples: Arc<RwLock<HashMap<u8, Sample>>>) {
-        // Stop all sound
-        for voice in self.voices.iter_mut() {
-            voice.set_is_active(false);
-        }
-
-        // Remove inactive voice from voices array
-        self.voices.retain(|v| v.get_is_active());
-
-        self.samples = samples;
     }
 
     pub fn set_max_polyphony(&mut self, max_polyphony: u32) {
