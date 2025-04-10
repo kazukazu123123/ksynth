@@ -2,8 +2,3 @@
 name = "ksynth-core"
 version.workspace = true
 edition.workspace = true
-
-[profile.release]
-strip = "symbols"
-lto = "fat"
-codegen-units = 1
