@@ -119,6 +119,17 @@ impl KSynth {
         fade_out_duration: Option<Duration>,
         samples: Arc<RwLock<HashMap<u8, Sample>>>,
     ) -> Self {
+        let mut resampled_samples = HashMap::new();
+
+        if let Ok(samples_guard) = samples.read() {
+            for (&note, sample) in samples_guard.iter() {
+                let resampled = sample.resample(sample_rate);
+                resampled_samples.insert(note, resampled);
+            }
+        }
+
+        let new_samples = Arc::new(RwLock::new(resampled_samples));
+
         let synth = Self {
             velocity_lut: precompute_velocity_lut(),
             midi_queue: Vec::new(),
@@ -126,7 +137,7 @@ impl KSynth {
             sample_rate,
             fade_out_duration: fade_out_duration.unwrap_or(FADE_OUT_DURATION),
             rendering_time: 0.0,
-            samples,
+            samples: new_samples,
             num_channel,
             voices: Vec::with_capacity(max_polyphony as usize),
             polyphony: 0,
@@ -145,7 +156,17 @@ impl KSynth {
         // Remove inactive voice from voices array
         self.voices.retain(|v| v.get_is_active());
 
-        self.samples = samples;
+        let mut resampled_samples = HashMap::new();
+
+        if let Ok(samples_guard) = samples.read() {
+            for (&note, sample) in samples_guard.iter() {
+                let resampled = sample.resample(self.sample_rate);
+                resampled_samples.insert(note, resampled);
+            }
+        }
+
+        let new_samples = Arc::new(RwLock::new(resampled_samples));
+        self.samples = new_samples;
     }
 
     pub fn queue_midi_cmd(&mut self, cmd: u32) {
