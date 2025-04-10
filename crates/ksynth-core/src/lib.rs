@@ -14,6 +14,8 @@ use voice::Voice;
 
 pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voice>() as u32);
 
+pub const KSYNTH_BUILD_GIT_COMMIT_HASH: &str = env!("KSYNTH_BUILD_GIT_COMMIT_HASH");
+
 const FADE_OUT_DURATION: Duration = Duration::from_millis(100);
 
 const fn precompute_velocity_lut() -> [f32; 128] {
