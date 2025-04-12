@@ -200,6 +200,10 @@ impl KSynth {
     }
 
     pub fn set_max_polyphony(&mut self, max_polyphony: u32) {
+        if max_polyphony == 0 {
+            return;
+        }
+
         // Stop all sound
         for voice in self.voices.iter_mut() {
             voice.set_is_active(false);
