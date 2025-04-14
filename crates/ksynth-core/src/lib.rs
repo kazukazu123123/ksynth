@@ -109,8 +109,8 @@ pub struct KSynth {
     samples: Arc<RwLock<HashMap<u8, Sample>>>,
     num_channel: Channel,
     voices: Vec<Voice>,
-    polyphony: usize,
-    max_polyphony: usize,
+    polyphony: u32,
+    max_polyphony: u32,
 }
 
 impl KSynth {
@@ -143,7 +143,7 @@ impl KSynth {
             num_channel,
             voices: Vec::with_capacity(max_polyphony as usize),
             polyphony: 0,
-            max_polyphony: max_polyphony.min(MAX_POLYPHONY) as usize,
+            max_polyphony: max_polyphony.min(MAX_POLYPHONY),
         };
 
         synth
@@ -192,11 +192,11 @@ impl KSynth {
     }
 
     pub fn get_polyphony(&self) -> u32 {
-        self.polyphony as u32
+        self.polyphony
     }
 
     pub fn get_max_polyphony(&self) -> u32 {
-        self.max_polyphony as u32
+        self.max_polyphony
     }
 
     pub fn set_max_polyphony(&mut self, max_polyphony: u32) {
@@ -213,10 +213,10 @@ impl KSynth {
         self.voices.retain(|v| v.get_is_active());
 
         // Update max polyphony
-        self.max_polyphony = max_polyphony.min(MAX_POLYPHONY) as usize;
+        self.max_polyphony = max_polyphony.min(MAX_POLYPHONY);
 
         // Reset current polyphony
-        self.polyphony = self.voices.len();
+        self.polyphony = self.voices.len() as u32;
     }
 
     pub fn fill_buffer(&mut self, buffer: &mut [f32]) -> bool {
@@ -440,7 +440,7 @@ impl KSynth {
 
         // Remove inactive voices
         self.voices.retain(|v| v.get_is_active());
-        self.polyphony = self.voices.len();
+        self.polyphony = self.voices.len() as u32;
 
         true
     }
