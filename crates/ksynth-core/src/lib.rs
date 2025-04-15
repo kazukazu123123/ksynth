@@ -141,9 +141,9 @@ impl KSynth {
             rendering_time: 0.0,
             samples: new_samples,
             num_channel,
-            voices: Vec::with_capacity(max_polyphony as usize),
+            voices: Vec::with_capacity(max_polyphony.max(1) as usize),
             polyphony: 0,
-            max_polyphony: max_polyphony.min(MAX_POLYPHONY),
+            max_polyphony: max_polyphony.max(1).min(MAX_POLYPHONY),
         };
 
         synth
