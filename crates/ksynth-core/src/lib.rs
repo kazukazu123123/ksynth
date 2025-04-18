@@ -101,6 +101,7 @@ impl_channel_try_from!(i8, i16, i32, i64, i128, isize);
 
 pub struct KSynth {
     velocity_lut: [f32; 128],
+    midi_queue: Vec<u32>,
     midi_channel: [MidiChannel; 16],
     sample_rate: u32,
     fade_out_duration: Duration,
@@ -133,6 +134,7 @@ impl KSynth {
 
         let synth = Self {
             velocity_lut: precompute_velocity_lut(),
+            midi_queue: Vec::new(),
             midi_channel: [MidiChannel::default(); 16],
             sample_rate,
             fade_out_duration: fade_out_duration.unwrap_or(FADE_OUT_DURATION),
@@ -169,97 +171,8 @@ impl KSynth {
         self.samples = new_samples;
     }
 
-    pub fn handle_midi_cmd(&mut self, cmd: u32) {
-        let status = (cmd & 0xFF) as u8;
-        let data1 = ((cmd >> 8) & 0xFF) as u8;
-        let data2 = ((cmd >> 16) & 0xFF) as u8;
-
-        let channel = (status & 0x0F) as u8;
-
-        match status & 0xF0 {
-            // Note On
-            0x90 => {
-                if data2 > 0 {
-                    self.note_on(channel, data1, data2);
-                } else {
-                    self.note_off(channel, data1);
-                }
-            }
-            // Note Off
-            0x80 => {
-                self.note_off(channel, data1);
-            }
-            // Control Change
-            0xB0 => {
-                match data1 {
-                    // Pan
-                    0x0A => {
-                        let pan = (data2 as f32 / 127.0) * 2.0 - 1.0;
-                        self.midi_channel[channel as usize].set_pan(pan);
-                    }
-                    // Damper pedal
-                    0x40 => {
-                        let is_sustain = data2 > 63;
-                        self.midi_channel[channel as usize].set_sustain(is_sustain);
-
-                        if !is_sustain {
-                            for voice in self.voices.iter_mut() {
-                                if voice.get_channel() == channel
-                                    && !voice.get_is_key_down()
-                                    && !voice.get_is_releasing()
-                                {
-                                    voice.set_is_releasing(true);
-                                }
-                            }
-                        }
-                    }
-                    // RPN MSB: CC101 = 0
-                    0x65 => {
-                        // CC101 (RPN MSB)
-                        if data2 == 0 {
-                            self.midi_channel[channel as usize].set_rpn_msb(0);
-                        }
-                    }
-                    // RPN LSB: CC100 = 0
-                    0x64 => {
-                        // CC100 (RPN LSB)
-                        if data2 == 0 {
-                            self.midi_channel[channel as usize].set_rpn_lsb(0);
-                        }
-                    }
-                    // Data Entry MSB: CC6 (Pitch Bend Sensitivity)
-                    0x06 => {
-                        // CC6 (Data Entry)
-                        if self.midi_channel[channel as usize].get_rpn_msb() == 0
-                            && self.midi_channel[channel as usize].get_rpn_lsb() == 0
-                        {
-                            // Set pitch bend range in semitones
-                            let bend_range = data2 as u8;
-                            self.midi_channel[channel as usize].set_bend_range_semitone(bend_range);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            0xE0 => {
-                // Reconstruct 14bit pitch bend value (0-16383) (Value = 128 * MSB + LSB)
-                let raw_value = ((data1 as u16) & 0x7F) | (((data2 as u16) & 0x7F) << 7);
-                let pitch_bend = raw_value as i16 - 8192;
-
-                // Proper normalization to [-1.0, +1.0]
-                let normalized = pitch_bend as f32 / 8192.0;
-
-                // Apply bend range in semitones
-                let bend_range =
-                    self.midi_channel[channel as usize].get_bend_range_semitone() as f32;
-                let semitones = normalized * bend_range;
-
-                let pitch_factor = 2.0f32.powf(semitones / 12.0);
-
-                self.midi_channel[channel as usize].set_pitch_factor(pitch_factor);
-            }
-            _ => {}
-        }
+    pub fn queue_midi_cmd(&mut self, cmd: u32) {
+        self.midi_queue.push(cmd);
     }
 
     pub fn get_fade_out_duration(&self) -> Duration {
@@ -318,6 +231,101 @@ impl KSynth {
 
         if frame_count == 0 {
             return false;
+        }
+
+        let midi_cmds = std::mem::take(&mut self.midi_queue);
+        for cmd in midi_cmds {
+            let status = (cmd & 0xFF) as u8;
+            let data1 = ((cmd >> 8) & 0xFF) as u8;
+            let data2 = ((cmd >> 16) & 0xFF) as u8;
+
+            let channel = (status & 0x0F) as u8;
+
+            match status & 0xF0 {
+                // Note On
+                0x90 => {
+                    if data2 > 0 {
+                        self.note_on(channel, data1, data2);
+                    } else {
+                        self.note_off(channel, data1);
+                    }
+                }
+                // Note Off
+                0x80 => {
+                    self.note_off(channel, data1);
+                }
+                // Control Change
+                0xB0 => {
+                    match data1 {
+                        // Pan
+                        0x0A => {
+                            let pan = (data2 as f32 / 127.0) * 2.0 - 1.0;
+                            self.midi_channel[channel as usize].set_pan(pan);
+                        }
+                        // Damper pedal
+                        0x40 => {
+                            let is_sustain = data2 > 63;
+                            self.midi_channel[channel as usize].set_sustain(is_sustain);
+
+                            if !is_sustain {
+                                for voice in self.voices.iter_mut() {
+                                    if voice.get_channel() == channel
+                                        && !voice.get_is_key_down()
+                                        && !voice.get_is_releasing()
+                                    {
+                                        voice.set_is_releasing(true);
+                                    }
+                                }
+                            }
+                        }
+                        // RPN MSB: CC101 = 0
+                        0x65 => {
+                            // CC101 (RPN MSB)
+                            if data2 == 0 {
+                                self.midi_channel[channel as usize].set_rpn_msb(0);
+                            }
+                        }
+                        // RPN LSB: CC100 = 0
+                        0x64 => {
+                            // CC100 (RPN LSB)
+                            if data2 == 0 {
+                                self.midi_channel[channel as usize].set_rpn_lsb(0);
+                            }
+                        }
+                        // Data Entry MSB: CC6 (Pitch Bend Sensitivity)
+                        0x06 => {
+                            // CC6 (Data Entry)
+                            if self.midi_channel[channel as usize].get_rpn_msb() == 0
+                                && self.midi_channel[channel as usize].get_rpn_lsb() == 0
+                            {
+                                // Set pitch bend range in semitones
+                                let bend_range = data2 as u8;
+                                self.midi_channel[channel as usize]
+                                    .set_bend_range_semitone(bend_range);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                0xE0 => {
+                    // Reconstruct 14bit pitch bend value (0-16383) (Value = 128 * MSB + LSB)
+                    let raw_value = ((data1 as u16) & 0x7F) | (((data2 as u16) & 0x7F) << 7);
+                    let pitch_bend = raw_value as i16 - 8192;
+
+                    // Proper normalization to [-1.0, +1.0]
+                    let normalized = pitch_bend as f32 / 8192.0;
+
+                    // Apply bend range in semitones
+                    let bend_range =
+                        self.midi_channel[channel as usize].get_bend_range_semitone() as f32;
+                    let semitones = normalized * bend_range;
+
+                    let pitch_factor = 2.0f32.powf(semitones / 12.0);
+
+                    self.midi_channel[channel as usize].set_pitch_factor(pitch_factor);
+                }
+                _ => {}
+            }
         }
 
         let samples_guard = self.samples.read().unwrap();
