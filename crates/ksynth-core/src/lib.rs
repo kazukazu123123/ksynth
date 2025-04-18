@@ -355,7 +355,8 @@ impl KSynth {
                             if samples_since_release >= fade_samples {
                                 voice.set_is_active(false);
                             } else {
-                                amplitude *= 1.0 - (samples_since_release as f32 / fade_samples as f32).powf(2.0);
+                                amplitude *=
+                                    1.0 - (samples_since_release as f32 / fade_samples as f32);
                             }
                         }
                     }
