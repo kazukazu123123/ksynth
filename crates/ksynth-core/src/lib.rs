@@ -446,11 +446,7 @@ impl KSynth {
     }
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
-        if channel > 15 || note > 127 || velocity > 127 {
-            return;
-        }
-
-        if channel == 9 {
+        if channel > 15 || note > 127 || velocity > 127 || channel == 9 {
             return;
         }
 
@@ -479,11 +475,7 @@ impl KSynth {
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {
-        if channel > 15 || note > 127 {
-            return;
-        }
-
-        if channel == 9 {
+        if channel > 15 || note > 127 || channel == 9 {
             return;
         }
 
