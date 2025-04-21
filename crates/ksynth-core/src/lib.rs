@@ -479,7 +479,8 @@ impl KSynth {
         }
 
         for voice in self.voices.iter_mut() {
-            if voice.get_channel() == channel && voice.get_note() == note {
+            if voice.get_channel() == channel && voice.get_note() == note && voice.get_is_key_down()
+            {
                 voice.set_is_key_down(false);
 
                 if !self.midi_channel[channel as usize].get_sustain() {
