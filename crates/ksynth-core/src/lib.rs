@@ -346,6 +346,8 @@ impl KSynth {
 
             // Process active voices
             for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
+                let voice_releasing = voice.get_is_releasing();
+
                 if let Some(sample) = samples_guard.get(&voice.get_note()) {
                     let sample_data = sample.get_sample_data();
                     let sample_length = sample.sample_length();
@@ -440,11 +442,11 @@ impl KSynth {
                             }
                         }
 
-                        if !voice.get_is_releasing() && reached_end {
+                        if !voice_releasing && reached_end {
                             voice.set_is_active(false);
                         }
 
-                        if voice.get_is_releasing() {
+                        if voice_releasing {
                             voice.increment_frames_since_release();
                         }
                     } else if sample_data_len <= 1 {
