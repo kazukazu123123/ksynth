@@ -332,8 +332,17 @@ impl KSynth {
 
         let rendering_time_start = Instant::now();
 
+        let fade_frames = (self.sample_rate as f64 * self.fade_out_duration.as_secs_f64()) as u64;
+
         for frame in 0..frame_count {
             let buffer_index = frame * num_channel;
+
+            if num_channel == 1 {
+                buffer[buffer_index] = 0.0;
+            } else {
+                buffer[buffer_index] = 0.0;
+                buffer[buffer_index + 1] = 0.0;
+            }
 
             // Process active voices
             for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
@@ -345,18 +354,17 @@ impl KSynth {
                     // Fade out processing
                     let mut amplitude = 1.0;
                     if voice.get_is_releasing() {
-                        if let Some(release_start) = voice.get_release_start_index() {
-                            let samples_since_release =
-                                voice.current_sample_index() - release_start;
-                            let fade_samples = (self.sample_rate as f32
-                                * self.fade_out_duration.as_secs_f32())
-                                as f32;
-
-                            if samples_since_release >= fade_samples {
+                        if let Some(frames_since_release) = voice.get_frames_since_release() {
+                            if frames_since_release >= fade_frames {
                                 voice.set_is_active(false);
+                                continue;
                             } else {
-                                amplitude *=
-                                    1.0 - (samples_since_release as f32 / fade_samples as f32);
+                                if fade_frames > 0 {
+                                    amplitude *=
+                                        1.0 - (frames_since_release as f32 / fade_frames as f32);
+                                } else {
+                                    amplitude = 0.0;
+                                }
                             }
                         }
                     }
@@ -418,15 +426,29 @@ impl KSynth {
                         voice.increment_sample_index(pitch_factor * sample_playback_rate);
 
                         // Loop or deactivate
+                        let mut reached_end = false;
                         if let Some(loop_info) = sample_loop {
                             if voice.current_sample_index() >= loop_info.end() as f32 {
-                                voice.set_current_sample_index(loop_info.start() as f32);
+                                voice.set_current_sample_index(
+                                    loop_info.start() as f32
+                                        + (voice.current_sample_index() - loop_info.end() as f32),
+                                );
                             }
                         } else {
                             if voice.current_sample_index() >= sample_length as f32 {
-                                voice.set_is_active(false);
+                                reached_end = true;
                             }
                         }
+
+                        if !voice.get_is_releasing() && reached_end {
+                            voice.set_is_active(false);
+                        }
+
+                        if voice.get_is_releasing() {
+                            voice.increment_frames_since_release();
+                        }
+                    } else if sample_data_len <= 1 {
+                        voice.set_is_active(false);
                     }
                 }
             }

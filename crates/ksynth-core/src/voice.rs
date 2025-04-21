@@ -1,6 +1,6 @@
 pub struct Voice {
     sample_index: f32,
-    release_start_index: Option<f32>,
+    frames_since_release: Option<u64>,
     is_active: bool,
     is_releasing: bool,
     is_key_down: bool,
@@ -13,7 +13,7 @@ impl Voice {
     pub fn new(channel: u8, note: u8, velocity: u8) -> Self {
         Self {
             sample_index: 0.0,
-            release_start_index: None,
+            frames_since_release: None,
             is_active: true,
             is_releasing: false,
             is_key_down: true,
@@ -71,16 +71,22 @@ impl Voice {
         self.is_key_down = is_key_down;
     }
 
+    pub fn increment_frames_since_release(&mut self) {
+        if let Some(count) = self.frames_since_release.as_mut() {
+            *count += 1;
+        }
+    }
     pub fn set_is_releasing(&mut self, is_releasing: bool) {
-        self.is_releasing = is_releasing;
-        if is_releasing {
-            self.release_start_index = Some(self.sample_index);
-        } else {
-            self.release_start_index = None;
+        if is_releasing && !self.is_releasing {
+            self.is_releasing = true;
+            self.frames_since_release = Some(0);
+        } else if !is_releasing && self.is_releasing {
+            self.is_releasing = false;
+            self.frames_since_release = None;
         }
     }
 
-    pub fn get_release_start_index(&self) -> Option<f32> {
-        self.release_start_index
+    pub fn get_frames_since_release(&self) -> Option<u64> {
+        self.frames_since_release
     }
 }
