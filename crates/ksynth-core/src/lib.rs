@@ -450,23 +450,22 @@ impl KSynth {
             return;
         }
 
-        if velocity == 0 {
-            self.note_off(channel, note);
-            return;
-        }
-
         if self.polyphony >= self.max_polyphony {
             if let Some(quietest_voice_index) = self
                 .voices
                 .iter()
                 .enumerate()
-                .filter(|(_, v)| v.get_is_active())
                 .min_by_key(|(_, v)| v.get_velocity())
                 .map(|(index, _)| index)
             {
                 self.voices.remove(quietest_voice_index);
                 self.polyphony -= 1;
             }
+        }
+
+        if velocity == 0 {
+            self.note_off(channel, note);
+            return;
         }
 
         let voice = Voice::new(channel, note, velocity);
