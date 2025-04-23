@@ -278,6 +278,10 @@ impl KSynth {
                                 }
                             }
                         }
+                        // Volume
+                        0x07 => {
+                            self.midi_channel[channel as usize].set_volume(data2);
+                        }
                         // RPN MSB: CC101 = 0
                         0x65 => {
                             // CC101 (RPN MSB)
@@ -360,23 +364,31 @@ impl KSynth {
                             if frames_since_release >= fade_frames {
                                 voice.set_is_active(false);
                                 continue;
+                            } else if fade_frames > 0 {
+                                amplitude *=
+                                    1.0 - (frames_since_release as f32 / fade_frames as f32);
                             } else {
-                                if fade_frames > 0 {
-                                    amplitude *=
-                                        1.0 - (frames_since_release as f32 / fade_frames as f32);
-                                } else {
-                                    amplitude = 0.0;
-                                }
+                                amplitude = 0.0;
                             }
                         }
                     }
 
                     let vel = voice.get_velocity() as f32;
                     let velocity_factor = self.velocity_lut[vel as usize];
-                    amplitude *= velocity_factor;
+                    let channel_volume =
+                        self.midi_channel[voice.get_channel() as usize].get_volume();
+                    let volume_factor = channel_volume as f32 / 127.0;
+
+                    // Apply velocity and volume
+                    amplitude *= velocity_factor * volume_factor;
 
                     let pitch_factor =
                         self.midi_channel[voice.get_channel() as usize].get_pitch_factor();
+
+                    let channel_volume =
+                        self.midi_channel[voice.get_channel() as usize].get_volume();
+                    let volume_factor = channel_volume as f32 / 127.0;
+                    amplitude *= volume_factor;
 
                     // Sample processing
                     let sample_data_len = match sample_data {

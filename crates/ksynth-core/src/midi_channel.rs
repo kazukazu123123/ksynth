@@ -2,6 +2,7 @@
 pub struct MidiChannel {
     channel: u8,
     pan: f32,
+    volume: u8,
     rpn_msb: u8,
     rpn_lsb: u8,
     bend_range_semitone: u8,
@@ -14,6 +15,7 @@ impl Default for MidiChannel {
         Self {
             channel: 0,
             pan: 0.0,
+            volume: 0,
             rpn_msb: 0,
             rpn_lsb: 0,
             bend_range_semitone: 2,
@@ -28,6 +30,7 @@ impl MidiChannel {
         MidiChannel {
             channel,
             pan: 0.0,
+            volume: 0,
             rpn_msb: 0,
             rpn_lsb: 0,
             bend_range_semitone: 2,
@@ -46,6 +49,14 @@ impl MidiChannel {
 
     pub fn set_pan(&mut self, pan: f32) {
         self.pan = pan;
+    }
+
+    pub fn get_volume(&self) -> u8 {
+        self.volume
+    }
+
+    pub fn set_volume(&mut self, volume: u8) {
+        self.volume = volume;
     }
 
     pub fn set_rpn_msb(&mut self, value: u8) {
