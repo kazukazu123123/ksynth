@@ -379,16 +379,10 @@ impl KSynth {
                         self.midi_channel[voice.get_channel() as usize].get_volume();
                     let volume_factor = channel_volume as f32 / 127.0;
 
-                    // Apply velocity and volume
                     amplitude *= velocity_factor * volume_factor;
 
                     let pitch_factor =
                         self.midi_channel[voice.get_channel() as usize].get_pitch_factor();
-
-                    let channel_volume =
-                        self.midi_channel[voice.get_channel() as usize].get_volume();
-                    let volume_factor = channel_volume as f32 / 127.0;
-                    amplitude *= volume_factor;
 
                     // Sample processing
                     let sample_data_len = match sample_data {

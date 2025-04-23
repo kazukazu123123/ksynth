@@ -15,7 +15,7 @@ impl Default for MidiChannel {
         Self {
             channel: 0,
             pan: 0.0,
-            volume: 0,
+            volume: 100,
             rpn_msb: 0,
             rpn_lsb: 0,
             bend_range_semitone: 2,
@@ -26,19 +26,6 @@ impl Default for MidiChannel {
 }
 
 impl MidiChannel {
-    pub fn new(channel: u8) -> Self {
-        MidiChannel {
-            channel,
-            pan: 0.0,
-            volume: 0,
-            rpn_msb: 0,
-            rpn_lsb: 0,
-            bend_range_semitone: 2,
-            pitch_factor: 1.0,
-            sustain: false,
-        }
-    }
-
     pub fn get_channel(&self) -> u8 {
         self.channel
     }
