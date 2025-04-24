@@ -357,6 +357,11 @@ impl KSynth {
                     let sample_length = sample.sample_length();
                     let sample_loop = sample.get_sample_loop();
 
+                    if sample_length == 0 {
+                        voice.set_is_active(false);
+                        continue;
+                    }
+
                     // Fade out processing
                     let mut amplitude = 1.0;
                     if voice.get_is_releasing() {
@@ -458,6 +463,8 @@ impl KSynth {
                     } else if sample_data_len <= 1 {
                         voice.set_is_active(false);
                     }
+                } else {
+                    voice.set_is_active(false);
                 }
             }
         }
