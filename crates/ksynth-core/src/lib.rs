@@ -5,6 +5,7 @@ pub mod voice;
 use midi_channel::MidiChannel;
 use std::{
     collections::HashMap,
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
@@ -105,7 +106,7 @@ pub struct KSynth {
     sample_rate: u32,
     fade_out_duration: Duration,
     rendering_time: f32,
-    samples: HashMap<u8, Sample>,
+    samples: Arc<RwLock<HashMap<u8, Sample>>>,
     num_channel: Channel,
     voices: Vec<Voice>,
     polyphony: u32,
@@ -118,16 +119,18 @@ impl KSynth {
         num_channel: Channel,
         max_polyphony: u32,
         fade_out_duration: Option<Duration>,
-        samples: HashMap<u8, Sample>,
+        samples: Arc<RwLock<HashMap<u8, Sample>>>,
     ) -> Self {
         let mut resampled_samples = HashMap::new();
 
-        for (&note, sample) in samples.iter() {
-            let resampled = sample.resample(sample_rate);
-            resampled_samples.insert(note, resampled);
+        if let Ok(samples_guard) = samples.read() {
+            for (&note, sample) in samples_guard.iter() {
+                let resampled = sample.resample(sample_rate);
+                resampled_samples.insert(note, resampled);
+            }
         }
 
-        let new_samples = resampled_samples;
+        let new_samples = Arc::new(RwLock::new(resampled_samples));
 
         let synth = Self {
             velocity_lut: precompute_velocity_lut(),
@@ -146,7 +149,7 @@ impl KSynth {
         synth
     }
 
-    pub fn set_samples(&mut self, samples: HashMap<u8, Sample>) {
+    pub fn set_samples(&mut self, samples: Arc<RwLock<HashMap<u8, Sample>>>) {
         // Stop all sound
         for voice in self.voices.iter_mut() {
             voice.set_is_active(false);
@@ -157,12 +160,15 @@ impl KSynth {
 
         let mut resampled_samples = HashMap::new();
 
-        for (&note, sample) in samples.iter() {
-            let resampled = sample.resample(self.sample_rate);
-            resampled_samples.insert(note, resampled);
+        if let Ok(samples_guard) = samples.read() {
+            for (&note, sample) in samples_guard.iter() {
+                let resampled = sample.resample(self.sample_rate);
+                resampled_samples.insert(note, resampled);
+            }
         }
 
-        self.samples = resampled_samples;
+        let new_samples = Arc::new(RwLock::new(resampled_samples));
+        self.samples = new_samples;
     }
 
     pub fn queue_midi_cmd(&mut self, cmd: u32) {
@@ -326,6 +332,8 @@ impl KSynth {
             }
         }
 
+        let samples_guard = self.samples.read().unwrap();
+
         let rendering_time_start = Instant::now();
 
         let fade_frames = (self.sample_rate as f64 * self.fade_out_duration.as_secs_f64()) as u64;
@@ -344,7 +352,7 @@ impl KSynth {
             for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
                 let voice_releasing = voice.get_is_releasing();
 
-                if let Some(sample) = self.samples.get(&voice.get_note()) {
+                if let Some(sample) = samples_guard.get(&voice.get_note()) {
                     let sample_data = sample.get_sample_data();
                     let sample_length = sample.sample_length();
                     let sample_loop = sample.get_sample_loop();
