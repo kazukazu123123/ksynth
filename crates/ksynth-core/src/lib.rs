@@ -130,6 +130,15 @@ impl KSynth {
 
         let new_samples = Arc::new(RwLock::new(resampled_samples));
 
+        // Initialize voice pool
+        let max_polyphony = max_polyphony.max(1).min(MAX_POLYPHONY);
+        let mut voices = Vec::with_capacity(max_polyphony as usize);
+        for _ in 0..max_polyphony {
+            let mut voice = Voice::new(0, 0, 0);
+            voice.set_is_active(false);
+            voices.push(voice);
+        }
+
         let synth = Self {
             velocity_lut: precompute_velocity_lut(),
             midi_queue: Vec::new(),
@@ -139,9 +148,9 @@ impl KSynth {
             rendering_time: 0.0,
             samples: new_samples,
             num_channel,
-            voices: Vec::with_capacity(max_polyphony.max(1) as usize),
+            voices,
             polyphony: 0,
-            max_polyphony: max_polyphony.max(1).min(MAX_POLYPHONY),
+            max_polyphony,
         };
 
         synth
@@ -153,8 +162,7 @@ impl KSynth {
             voice.set_is_active(false);
         }
 
-        // Remove inactive voice from voices array
-        self.voices.retain(|v| v.get_is_active());
+        self.polyphony = 0;
 
         let mut resampled_samples = HashMap::new();
 
@@ -198,19 +206,41 @@ impl KSynth {
             return;
         }
 
-        // Stop all sound
-        for voice in self.voices.iter_mut() {
-            voice.set_is_active(false);
+        // Clear all voices
+        self.voices.clear();
+
+        let new_max_polyphony = max_polyphony.min(MAX_POLYPHONY);
+
+        if new_max_polyphony < self.max_polyphony {
+            if self.polyphony > new_max_polyphony {
+                let voices_to_deactivate = self.polyphony - new_max_polyphony;
+
+                let mut voice_indices: Vec<_> = self
+                    .voices
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, v)| v.get_is_active())
+                    .map(|(i, v)| (i, v.get_velocity()))
+                    .collect();
+
+                voice_indices.sort_by_key(|(_, velocity)| *velocity);
+
+                for (index, _) in voice_indices.iter().take(voices_to_deactivate as usize) {
+                    self.voices[*index].set_is_active(false);
+                }
+
+                self.polyphony = new_max_polyphony;
+            }
+        } else if new_max_polyphony > self.max_polyphony {
+            let additional_voices = new_max_polyphony - self.max_polyphony;
+            for _ in 0..additional_voices {
+                let mut voice = Voice::new(0, 0, 0);
+                voice.set_is_active(false);
+                self.voices.push(voice);
+            }
         }
 
-        // Remove inactive voice from voices array
-        self.voices.retain(|v| v.get_is_active());
-
-        // Update max polyphony
-        self.max_polyphony = max_polyphony.min(MAX_POLYPHONY);
-
-        // Reset current polyphony
-        self.polyphony = self.voices.len() as u32;
+        self.max_polyphony = new_max_polyphony;
     }
 
     pub fn fill_buffer(&mut self, buffer: &mut [f32]) -> bool {
@@ -469,9 +499,7 @@ impl KSynth {
         let rendering_time = elapsed_time_ms / buffer_size as f32;
         self.rendering_time = rendering_time * 100.0;
 
-        // Remove inactive voices
-        self.voices.retain(|v| v.get_is_active());
-        self.polyphony = self.voices.len() as u32;
+        self.polyphony = self.voices.iter().filter(|v| v.get_is_active()).count() as u32;
 
         true
     }
@@ -482,15 +510,13 @@ impl KSynth {
         }
 
         if self.polyphony >= self.max_polyphony {
-            if let Some(quietest_voice_index) = self
+            if let Some(quietest_voice) = self
                 .voices
-                .iter()
-                .enumerate()
-                .min_by_key(|(_, v)| v.get_velocity())
-                .map(|(index, _)| index)
+                .iter_mut()
+                .filter(|v| v.get_is_active())
+                .min_by_key(|v| v.get_velocity())
             {
-                self.voices.remove(quietest_voice_index);
-                self.polyphony -= 1;
+                quietest_voice.reuse(channel, note, velocity);
             }
         }
 
@@ -499,9 +525,11 @@ impl KSynth {
             return;
         }
 
-        let voice = Voice::new(channel, note, velocity);
-        self.voices.push(voice);
-        self.polyphony += 1;
+        if let Some(voice) = self.voices.iter_mut().find(|v| !v.get_is_active()) {
+            voice.reuse(channel, note, velocity);
+            self.polyphony += 1;
+            return;
+        }
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {
