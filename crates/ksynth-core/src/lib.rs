@@ -6,7 +6,7 @@ use midi_channel::MidiChannel;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use sample::{Sample, SampleData};
