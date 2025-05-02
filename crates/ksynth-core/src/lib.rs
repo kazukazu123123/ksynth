@@ -16,8 +16,6 @@ pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voi
 
 pub const KSYNTH_BUILD_GIT_COMMIT_HASH: &str = env!("KSYNTH_BUILD_GIT_COMMIT_HASH");
 
-const FADE_OUT_DURATION: Duration = Duration::from_millis(100);
-
 const fn precompute_velocity_lut() -> [f32; 128] {
     let mut lut = [0.0; 128];
     let mut i = 0;
@@ -104,7 +102,7 @@ pub struct KSynth {
     midi_queue: Vec<u32>,
     midi_channel: [MidiChannel; 16],
     sample_rate: u32,
-    fade_out_duration: Duration,
+    fade_out_sample: u64,
     rendering_time: f32,
     samples: Arc<RwLock<HashMap<u8, Sample>>>,
     num_channel: Channel,
@@ -118,7 +116,7 @@ impl KSynth {
         sample_rate: u32,
         num_channel: Channel,
         max_polyphony: u32,
-        fade_out_duration: Option<Duration>,
+        fade_out_sample: u64,
         samples: Arc<RwLock<HashMap<u8, Sample>>>,
     ) -> Self {
         let mut resampled_samples = HashMap::new();
@@ -137,7 +135,7 @@ impl KSynth {
             midi_queue: Vec::new(),
             midi_channel: [MidiChannel::default(); 16],
             sample_rate,
-            fade_out_duration: fade_out_duration.unwrap_or(FADE_OUT_DURATION),
+            fade_out_sample,
             rendering_time: 0.0,
             samples: new_samples,
             num_channel,
@@ -175,16 +173,12 @@ impl KSynth {
         self.midi_queue.push(cmd);
     }
 
-    pub fn get_fade_out_duration(&self) -> Duration {
-        self.fade_out_duration
+    pub fn get_fade_out_sample(&self) -> u64 {
+        self.fade_out_sample
     }
 
-    pub fn set_fade_out_duration(&mut self, fade_out_duration: Duration) {
-        self.fade_out_duration = fade_out_duration;
-    }
-
-    pub fn reset_fade_out_duration(&mut self) {
-        self.fade_out_duration = FADE_OUT_DURATION;
+    pub fn set_fade_out_sample(&mut self, fade_out_sample: u64) {
+        self.fade_out_sample = fade_out_sample;
     }
 
     pub fn get_rendering_time(&self) -> f32 {
@@ -336,7 +330,7 @@ impl KSynth {
 
         let rendering_time_start = Instant::now();
 
-        let fade_frames = (self.sample_rate as f64 * self.fade_out_duration.as_secs_f64()) as u64;
+        let fade_frames = self.fade_out_sample;
 
         for frame in 0..frame_count {
             let buffer_index = frame * num_channel;
