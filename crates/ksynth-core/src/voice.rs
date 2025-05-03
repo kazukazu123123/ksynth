@@ -23,17 +23,6 @@ impl Voice {
         }
     }
 
-    pub fn reuse(&mut self, channel: u8, note: u8, velocity: u8) {
-        self.sample_index = 0.0;
-        self.frames_since_release = None;
-        self.is_active = true;
-        self.is_releasing = false;
-        self.is_key_down = true;
-        self.channel = channel;
-        self.note = note;
-        self.velocity = velocity;
-    }
-
     pub fn current_sample_index(&self) -> f32 {
         self.sample_index
     }
