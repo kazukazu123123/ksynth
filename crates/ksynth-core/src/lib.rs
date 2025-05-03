@@ -4,7 +4,6 @@ pub mod voice;
 
 use midi_channel::MidiChannel;
 use std::{
-    collections::HashMap,
     sync::{Arc, RwLock},
     time::Instant,
 };
@@ -104,7 +103,7 @@ pub struct KSynth {
     sample_rate: u32,
     fade_out_sample: u64,
     rendering_time: f32,
-    samples: Arc<RwLock<HashMap<u8, Sample>>>,
+    samples: Arc<RwLock<[Option<Sample>; 128]>>,
     num_channel: Channel,
     voices: Vec<Voice>,
     polyphony: u32,
@@ -117,14 +116,17 @@ impl KSynth {
         num_channel: Channel,
         max_polyphony: u32,
         fade_out_sample: u64,
-        samples: Arc<RwLock<HashMap<u8, Sample>>>,
+        samples: Arc<RwLock<[Option<Sample>; 128]>>,
     ) -> Self {
-        let mut resampled_samples = HashMap::new();
+        // Create an array of None values
+        let mut resampled_samples: [Option<Sample>; 128] = std::array::from_fn(|_| None);
 
         if let Ok(samples_guard) = samples.read() {
-            for (&note, sample) in samples_guard.iter() {
-                let resampled = sample.resample(sample_rate);
-                resampled_samples.insert(note, resampled);
+            for (note, sample_opt) in samples_guard.iter().enumerate() {
+                if let Some(sample) = sample_opt {
+                    let resampled = sample.resample(sample_rate);
+                    resampled_samples[note] = Some(resampled);
+                }
             }
         }
 
@@ -156,7 +158,7 @@ impl KSynth {
         synth
     }
 
-    pub fn set_samples(&mut self, samples: Arc<RwLock<HashMap<u8, Sample>>>) {
+    pub fn set_samples(&mut self, samples: Arc<RwLock<[Option<Sample>; 128]>>) {
         // Stop all sound
         for voice in self.voices.iter_mut() {
             voice.set_is_active(false);
@@ -164,12 +166,15 @@ impl KSynth {
 
         self.polyphony = 0;
 
-        let mut resampled_samples = HashMap::new();
+        // Create an array of None values
+        let mut resampled_samples: [Option<Sample>; 128] = std::array::from_fn(|_| None);
 
         if let Ok(samples_guard) = samples.read() {
-            for (&note, sample) in samples_guard.iter() {
-                let resampled = sample.resample(self.sample_rate);
-                resampled_samples.insert(note, resampled);
+            for (note, sample_opt) in samples_guard.iter().enumerate() {
+                if let Some(sample) = sample_opt {
+                    let resampled = sample.resample(self.sample_rate);
+                    resampled_samples[note] = Some(resampled);
+                }
             }
         }
 
@@ -376,119 +381,122 @@ impl KSynth {
             for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
                 let voice_releasing = voice.get_is_releasing();
 
-                if let Some(sample) = samples_guard.get(&voice.get_note()) {
-                    let sample_data = sample.get_sample_data();
-                    let sample_length = sample.sample_length();
-                    let sample_loop = sample.get_sample_loop();
+                let note = voice.get_note() as usize;
+                if note < 128 {
+                    if let Some(sample) = &samples_guard[note] {
+                        let sample_data = sample.get_sample_data();
+                        let sample_length = sample.sample_length();
+                        let sample_loop = sample.get_sample_loop();
 
-                    if sample_length == 0 {
-                        voice.set_is_active(false);
-                        continue;
-                    }
+                        if sample_length == 0 {
+                            voice.set_is_active(false);
+                            continue;
+                        }
 
-                    // Fade out processing
-                    let mut amplitude = 1.0;
-                    if voice.get_is_releasing() {
-                        if let Some(frames_since_release) = voice.get_frames_since_release() {
-                            if frames_since_release >= fade_frames {
-                                voice.set_is_active(false);
-                                continue;
-                            } else if fade_frames > 0 {
-                                amplitude *=
-                                    1.0 - (frames_since_release as f32 / fade_frames as f32);
-                            } else {
-                                amplitude = 0.0;
+                        // Fade out processing
+                        let mut amplitude = 1.0;
+                        if voice.get_is_releasing() {
+                            if let Some(frames_since_release) = voice.get_frames_since_release() {
+                                if frames_since_release >= fade_frames {
+                                    voice.set_is_active(false);
+                                    continue;
+                                } else if fade_frames > 0 {
+                                    amplitude *=
+                                        1.0 - (frames_since_release as f32 / fade_frames as f32);
+                                } else {
+                                    amplitude = 0.0;
+                                }
                             }
                         }
-                    }
 
-                    let vel = voice.get_velocity() as f32;
-                    let velocity_factor = self.velocity_lut[vel as usize];
-                    let channel_volume =
-                        self.midi_channel[voice.get_channel() as usize].get_volume();
-                    let volume_factor = channel_volume as f32 / 127.0;
+                        let vel = voice.get_velocity() as f32;
+                        let velocity_factor = self.velocity_lut[vel as usize];
+                        let channel_volume =
+                            self.midi_channel[voice.get_channel() as usize].get_volume();
+                        let volume_factor = channel_volume as f32 / 127.0;
 
-                    amplitude *= velocity_factor * volume_factor;
+                        amplitude *= velocity_factor * volume_factor;
 
-                    let pitch_factor =
-                        self.midi_channel[voice.get_channel() as usize].get_pitch_factor();
+                        let pitch_factor =
+                            self.midi_channel[voice.get_channel() as usize].get_pitch_factor();
 
-                    // Sample processing
-                    let sample_data_len = match sample_data {
-                        SampleData::Mono(data) => data.len(),
-                        SampleData::Stereo(data) => data.len(),
-                    };
-
-                    if sample_data_len > 1 {
-                        let sample_index_f = voice.current_sample_index();
-                        let sample_index = sample_index_f.floor() as usize;
-                        let next_index = (sample_index + 1).min(sample_data_len - 1);
-                        let frac = sample_index_f - sample_index as f32;
-
-                        let (left, right) = match sample_data {
-                            SampleData::Mono(data) => {
-                                let s1 = data.get(sample_index).copied().unwrap_or(0) as f32;
-                                let s2 = data.get(next_index).copied().unwrap_or(0) as f32;
-                                let value = s1 + (s2 - s1) * frac;
-                                let val = value / i16::MAX as f32;
-                                (val, val)
-                            }
-                            SampleData::Stereo(data) => {
-                                let (l1, r1) = data.get(sample_index).copied().unwrap_or((0, 0));
-                                let (l2, r2) = data.get(next_index).copied().unwrap_or((0, 0));
-                                let left = l1 as f32 + (l2 as f32 - l1 as f32) * frac;
-                                let right = r1 as f32 + (r2 as f32 - r1 as f32) * frac;
-                                (left / i16::MAX as f32, right / i16::MAX as f32)
-                            }
+                        // Sample processing
+                        let sample_data_len = match sample_data {
+                            SampleData::Mono(data) => data.len(),
+                            SampleData::Stereo(data) => data.len(),
                         };
 
-                        // Pan handling (stereo)
-                        let pan = self.midi_channel[voice.get_channel() as usize].get_pan();
-                        let left_pan = ((1.0 - pan) * 0.5).sqrt();
-                        let right_pan = ((1.0 + pan) * 0.5).sqrt();
+                        if sample_data_len > 1 {
+                            let sample_index_f = voice.current_sample_index();
+                            let sample_index = sample_index_f.floor() as usize;
+                            let next_index = (sample_index + 1).min(sample_data_len - 1);
+                            let frac = sample_index_f - sample_index as f32;
 
-                        match self.num_channel {
-                            Channel::Mono => {
-                                buffer[buffer_index] += (left + right) * 0.5 * amplitude;
-                            }
-                            Channel::Stereo => {
-                                buffer[buffer_index] += left * amplitude * left_pan;
-                                buffer[buffer_index + 1] += right * amplitude * right_pan;
-                            }
-                        }
+                            let (left, right) = match sample_data {
+                                SampleData::Mono(data) => {
+                                    let s1 = data.get(sample_index).copied().unwrap_or(0) as f32;
+                                    let s2 = data.get(next_index).copied().unwrap_or(0) as f32;
+                                    let value = s1 + (s2 - s1) * frac;
+                                    let val = value / i16::MAX as f32;
+                                    (val, val)
+                                }
+                                SampleData::Stereo(data) => {
+                                    let (l1, r1) = data.get(sample_index).copied().unwrap_or((0, 0));
+                                    let (l2, r2) = data.get(next_index).copied().unwrap_or((0, 0));
+                                    let left = l1 as f32 + (l2 as f32 - l1 as f32) * frac;
+                                    let right = r1 as f32 + (r2 as f32 - r1 as f32) * frac;
+                                    (left / i16::MAX as f32, right / i16::MAX as f32)
+                                }
+                            };
 
-                        // Advance sample index with pitch factor
-                        let sample_playback_rate =
-                            sample.get_sample_rate() as f32 / self.sample_rate as f32;
-                        voice.increment_sample_index(pitch_factor * sample_playback_rate);
+                            // Pan handling (stereo)
+                            let pan = self.midi_channel[voice.get_channel() as usize].get_pan();
+                            let left_pan = ((1.0 - pan) * 0.5).sqrt();
+                            let right_pan = ((1.0 + pan) * 0.5).sqrt();
 
-                        // Loop or deactivate
-                        let mut reached_end = false;
-                        if let Some(loop_info) = sample_loop {
-                            if voice.current_sample_index() >= loop_info.end() as f32 {
-                                voice.set_current_sample_index(
-                                    loop_info.start() as f32
-                                        + (voice.current_sample_index() - loop_info.end() as f32),
-                                );
+                            match self.num_channel {
+                                Channel::Mono => {
+                                    buffer[buffer_index] += (left + right) * 0.5 * amplitude;
+                                }
+                                Channel::Stereo => {
+                                    buffer[buffer_index] += left * amplitude * left_pan;
+                                    buffer[buffer_index + 1] += right * amplitude * right_pan;
+                                }
                             }
-                        } else {
-                            if voice.current_sample_index() >= sample_length as f32 {
-                                reached_end = true;
-                            }
-                        }
 
-                        if !voice_releasing && reached_end {
+                            // Advance sample index with pitch factor
+                            let sample_playback_rate =
+                                sample.get_sample_rate() as f32 / self.sample_rate as f32;
+                            voice.increment_sample_index(pitch_factor * sample_playback_rate);
+
+                            // Loop or deactivate
+                            let mut reached_end = false;
+                            if let Some(loop_info) = sample_loop {
+                                if voice.current_sample_index() >= loop_info.end() as f32 {
+                                    voice.set_current_sample_index(
+                                        loop_info.start() as f32
+                                            + (voice.current_sample_index() - loop_info.end() as f32),
+                                    );
+                                }
+                            } else {
+                                if voice.current_sample_index() >= sample_length as f32 {
+                                    reached_end = true;
+                                }
+                            }
+
+                            if !voice_releasing && reached_end {
+                                voice.set_is_active(false);
+                            }
+
+                            if voice_releasing {
+                                voice.increment_frames_since_release();
+                            }
+                        } else if sample_data_len <= 1 {
                             voice.set_is_active(false);
                         }
-
-                        if voice_releasing {
-                            voice.increment_frames_since_release();
-                        }
-                    } else if sample_data_len <= 1 {
+                    } else {
                         voice.set_is_active(false);
                     }
-                } else {
-                    voice.set_is_active(false);
                 }
             }
         }
