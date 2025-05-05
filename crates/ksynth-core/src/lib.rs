@@ -16,21 +16,6 @@ pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voi
 
 pub const KSYNTH_BUILD_GIT_COMMIT_HASH: &str = env!("KSYNTH_BUILD_GIT_COMMIT_HASH");
 
-const fn precompute_velocity_lut() -> [f32; 128] {
-    let mut lut = [0.0; 128];
-    let mut i = 0;
-    while i < 128 {
-        let x = i as f32 / 127.0;
-        // Approximate x^2.5 using x * x * sqrt(x)
-        // sqrt(x) approximation using one iteration of Newton's method
-        let x2 = x * x;
-        let sqrt_x = 0.5 * (x + 1.0); // Simple approximation of sqrt(x)
-        lut[i] = f32::min(x2 * sqrt_x + 0.03, 1.0);
-        i += 1;
-    }
-    lut
-}
-
 /// Returns the size of a `Voice` in bytes.
 pub fn get_voice_size_byte() -> usize {
     std::mem::size_of::<Voice>()
@@ -112,6 +97,18 @@ pub struct KSynth {
 }
 
 impl KSynth {
+    fn precompute_velocity_lut() -> [f32; 128] {
+        let mut lut = [0.0; 128];
+        let mut i = 0;
+        while i < 128 {
+            let log_vel = i as f32 / 127.0;
+            let velocity = (log_vel.powf(2.5) + 0.03).min(1.0);
+            lut[i] = velocity;
+            i += 1;
+        }
+        lut
+    }
+
     pub fn new(
         sample_rate: u32,
         num_channel: Channel,
@@ -131,7 +128,7 @@ impl KSynth {
         let new_samples = Arc::new(RwLock::new(resampled_samples));
 
         let synth = Self {
-            velocity_lut: precompute_velocity_lut(),
+            velocity_lut: Self::precompute_velocity_lut(),
             midi_queue: Vec::new(),
             midi_channel: [MidiChannel::default(); 16],
             sample_rate,
@@ -481,6 +478,11 @@ impl KSynth {
             return;
         }
 
+        if velocity == 0 {
+            self.note_off(channel, note);
+            return;
+        }
+
         if self.polyphony >= self.max_polyphony {
             if let Some(quietest_voice_index) = self
                 .voices
@@ -492,11 +494,6 @@ impl KSynth {
                 self.voices.remove(quietest_voice_index);
                 self.polyphony -= 1;
             }
-        }
-
-        if velocity == 0 {
-            self.note_off(channel, note);
-            return;
         }
 
         let voice = Voice::new(channel, note, velocity);
