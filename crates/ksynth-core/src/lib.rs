@@ -340,7 +340,7 @@ impl KSynth {
             }
 
             // Process active voices
-            for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
+            for voice in self.voices.iter_mut().filter(|v| v.get_is_active()).rev() {
                 let voice_releasing = voice.get_is_releasing();
 
                 if let Some(sample) = samples_guard.get(&voice.get_note()) {
