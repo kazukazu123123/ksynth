@@ -109,6 +109,20 @@ impl KSynth {
         lut
     }
 
+    /// Creates a new instance of `KSynth`.
+    ///
+    /// # Parameters
+    ///
+    /// * `sample_rate`: The sample rate (Hz) used for audio processing.
+    /// * `num_channel`: The number of output audio channels (mono or stereo).
+    /// * `max_polyphony`: The maximum number of voices the synthesizer can play simultaneously. If set to 0, it will default to 1. Cannot exceed `MAX_POLYPHONY`.
+    /// * `fade_out_sample`: The number of samples used for fade-out when a note is released or a voice stops.
+    /// * `samples`: A thread-safe reference to a map where MIDI note numbers are keys and `Sample` objects are values.
+    /// The provided samples will be resampled to match the specified `sample_rate`.
+    ///
+    /// # Returns
+    ///
+    /// A newly created `KSynth` instance.
     pub fn new(
         sample_rate: u32,
         num_channel: Channel,
@@ -144,6 +158,15 @@ impl KSynth {
         synth
     }
 
+    /// Updates the sample set used by the synthesizer.
+    ///
+    /// Calling this function will stop all currently playing sounds,
+    /// and inactive voices will be removed from the internal voice pool.
+    /// The newly provided samples will be resampled to match the synthesizer’s current sample rate.
+    ///
+    /// # Parameters
+    ///
+    /// * `samples`: A thread-safe reference to a new sample map where MIDI note numbers are keys and `Sample` objects are values.
     pub fn set_samples(&mut self, samples: Arc<RwLock<HashMap<u8, Sample>>>) {
         // Stop all sound
         for voice in self.voices.iter_mut() {
@@ -166,30 +189,81 @@ impl KSynth {
         self.samples = new_samples;
     }
 
+    /// Adds a MIDI command to the internal queue.
+    ///
+    /// The added MIDI command will be processed during the next call to `fill_buffer`.
+    /// The command must be encoded as a `u32` (e.g., `(status | (data1 << 8) | (data2 << 16))`).
+    ///
+    /// # Parameters
+    ///
+    /// * `cmd`: The encoded MIDI command.
     pub fn queue_midi_cmd(&mut self, cmd: u32) {
         self.midi_queue.push(cmd);
     }
 
+    /// Returns the number of samples currently set for fade-out.
+    ///
+    /// # Returns
+    ///
+    /// The number of samples used for fade-out.
     pub fn get_fade_out_sample(&self) -> u64 {
         self.fade_out_sample
     }
 
+    /// Sets the number of samples to use for fade-out.
+    ///
+    /// This value specifies, in number of samples, the duration over which
+    /// the volume will gradually decrease to zero after a note is released
+    /// or a voice ends naturally.
+    ///
+    /// # Parameters
+    ///
+    /// * `fade_out_sample`: The new number of samples for fade-out.
     pub fn set_fade_out_sample(&mut self, fade_out_sample: u64) {
         self.fade_out_sample = fade_out_sample;
     }
 
+    /// Returns the percentage of time spent rendering the most recent audio buffer.
+    ///
+    /// This value is calculated by dividing the buffer processing time (in milliseconds)
+    /// by the buffer size, then multiplying by 100.
+    /// It can be used as an indicator of CPU load.
+    ///
+    /// # Returns
+    ///
+    /// The percentage of rendering time.
     pub fn get_rendering_time(&self) -> f32 {
         self.rendering_time
     }
 
+    /// Returns the number of currently active voices (current polyphony).
+    ///
+    /// # Returns
+    ///
+    /// The number of voices currently playing.
     pub fn get_polyphony(&self) -> u32 {
         self.polyphony
     }
 
+    /// Returns the maximum number of polyphony voices configured.
+    ///
+    /// # Returns
+    ///
+    /// The maximum number of voices that can play simultaneously.
     pub fn get_max_polyphony(&self) -> u32 {
         self.max_polyphony
     }
 
+    /// Sets the maximum number of polyphony voices for the synthesizer.
+    ///
+    /// If the new maximum polyphony differs from the current value, all voices will be stopped,
+    /// and inactive voices will be removed.
+    /// If the specified value is 0, it will be ignored.
+    /// The value is capped by the `MAX_POLYPHONY` constant.
+    ///
+    /// # Parameters
+    ///
+    /// * `max_polyphony`: The new maximum number of polyphony voices. Ignored if set to 0.
     pub fn set_max_polyphony(&mut self, max_polyphony: u32) {
         if max_polyphony == 0 {
             return;
@@ -210,6 +284,25 @@ impl KSynth {
         self.polyphony = self.voices.len() as u32;
     }
 
+    /// Fills the given audio buffer with rendered audio data.
+    ///
+    /// This method first processes any queued MIDI commands,
+    /// then synthesizes audio from each active voice and writes it into the buffer.
+    /// Inactive voices are cleaned up after processing.
+    ///
+    /// # Parameters
+    ///
+    /// * `buffer`: A slice of `f32` values to write audio data into.
+    ///             The buffer length should be a multiple of the number of channels (1 for mono, 2 for stereo).
+    ///
+    /// # Returns
+    ///
+    /// * `true`: If the buffer was filled (i.e., the frame count was greater than 0).
+    /// * `false`: If the buffer's frame count was 0 and processing was skipped.
+    ///
+    /// # Panics
+    ///
+    /// May panic if `self.samples.read().unwrap()` fails (e.g., if the RwLock is poisoned).
     pub fn fill_buffer(&mut self, buffer: &mut [f32]) -> bool {
         let buffer_size = buffer.len();
 
