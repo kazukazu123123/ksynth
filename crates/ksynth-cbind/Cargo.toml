@@ -1,0 +1,10 @@
+[package]
+name = "ksynth-cbind"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ksynth-core = { path = "../ksynth-core" }
