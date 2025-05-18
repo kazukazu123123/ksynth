@@ -72,6 +72,14 @@ pub unsafe extern "C" fn ksynth_free_git_commit_hash_string(string: *mut c_char)
     }
 }
 
+/// Returns the memory size in bytes required for a single voice instance.
+/// # Returns
+/// The memory usage in bytes for one voice.
+#[unsafe(no_mangle)]
+pub extern "C" fn ksynth_get_voice_size_byte() -> usize {
+    ksynth_core::get_voice_size_byte()
+}
+
 /// Calculates the memory usage for a given number of voices.
 /// # Arguments
 /// `voice_count` - The number of voices to calculate memory usage for.
