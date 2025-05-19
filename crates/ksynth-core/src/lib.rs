@@ -99,13 +99,12 @@ pub struct KSynth {
 impl KSynth {
     fn precompute_velocity_lut() -> [f32; 128] {
         let mut lut = [0.0; 128];
-        let mut i = 0;
-        while i < 128 {
-            let log_vel = i as f32 / 127.0;
-            let velocity = (log_vel.powf(2.5) + 0.03).min(1.0);
-            lut[i] = velocity;
-            i += 1;
+
+        for i in 0..128 {
+            let t = i as f32 / 127.0;
+            lut[i] = t.powi(2);
         }
+
         lut
     }
 
@@ -156,6 +155,45 @@ impl KSynth {
         };
 
         synth
+    }
+
+    /// Returns the current velocity curve used by the synthesizer.
+    ///
+    /// The velocity curve is a lookup table that maps MIDI velocity values (0-127)
+    /// to amplitude scaling factors (typically 0.0 to 1.0). This allows for
+    /// customizing the synthesizer's response to note velocities.
+    ///
+    /// # Returns
+    ///
+    /// An array of 128 `f32` values representing the current velocity curve.
+    /// The index of the array corresponds to the MIDI velocity, and the value
+    /// at that index is the amplitude scaling factor.
+    pub fn get_velocity_curve(&self) -> [f32; 128] {
+        self.velocity_lut
+    }
+
+    /// Sets a new velocity curve for the synthesizer.
+    ///
+    /// The velocity curve defines how MIDI note-on velocity values (0-127)
+    /// are translated into amplitude scaling factors for played samples.
+    /// This allows for dynamic control over the loudness response of the instrument.
+    ///
+    /// # Parameters
+    ///
+    /// * `new_velocity_curve`: An array of 128 `f32` values representing the new
+    ///   velocity curve. Each element at index `i` (0-127) corresponds to the
+    ///   amplitude scaling factor for MIDI velocity `i`.
+    ///   Values outside the range [0.0, 1.0] will be clamped to this range.
+    pub fn set_velocity_curve(&mut self, mut new_velocity_curve: [f32; 128]) {
+        for val in new_velocity_curve.iter_mut() {
+            *val = val.clamp(0.0, 1.0);
+        }
+        self.velocity_lut = new_velocity_curve;
+    }
+
+    /// Resets the velocity curve to its default setting.
+    pub fn reset_velocity_curve(&mut self) {
+        self.velocity_lut = Self::precompute_velocity_lut();
     }
 
     /// Updates the sample set used by the synthesizer.

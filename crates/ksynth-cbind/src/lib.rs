@@ -250,6 +250,116 @@ pub unsafe extern "C" fn ksynth_new(
     Box::into_raw(synth) as *mut KSynthPtr
 }
 
+/// Retrieves the current velocity curve from the KSynth instance and copies it into a C buffer.
+///
+/// The velocity curve is an array of 128 `f32` values, where the index represents
+/// the MIDI velocity (0-127) and the value is the corresponding amplitude scaling factor.
+///
+/// # Arguments
+/// * `synth_ptr` - A pointer to the `KSynth` instance.
+/// * `out_velocity_curve` - A pointer to a C array of `float` (at least 128 elements)
+///                          where the velocity curve data will be copied.
+///
+/// # Returns
+/// * `true` (1) if the velocity curve was successfully copied.
+/// * `false` (0) if `synth_ptr` or `out_velocity_curve` is null.
+///
+/// # Safety
+/// * `synth_ptr` must be a valid pointer to a `KSynth` instance previously returned by `ksynth_new`.
+/// * `out_velocity_curve` must be a valid pointer to a mutable block of memory capable of
+///   holding at least `128 * std::mem::size_of::<f32>()` bytes. The caller is responsible
+///   for allocating and managing this buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ksynth_get_velocity_curve(
+    synth_ptr: *mut KSynthPtr,
+    out_velocity_curve: *mut f32,
+) -> bool {
+    if synth_ptr.is_null() {
+        return false;
+    }
+    if out_velocity_curve.is_null() {
+        return false;
+    }
+
+    let synth = unsafe { &*(synth_ptr as *mut KSynth) };
+
+    let velocity_curve_array: [f32; 128] = synth.get_velocity_curve();
+
+    unsafe {
+        let out_slice = std::slice::from_raw_parts_mut(out_velocity_curve, 128);
+        out_slice.copy_from_slice(&velocity_curve_array);
+    }
+
+    true
+}
+
+/// Sets a new velocity curve for the KSynth instance.
+///
+/// The velocity curve is an array of 128 `f32` values, where the index represents
+/// the MIDI velocity (0-127) and the value is the corresponding amplitude scaling factor.
+/// Values provided in `new_velocity_curve_ptr` that are outside the range [0.0, 1.0]
+/// will be clamped to this range by the underlying synthesizer.
+///
+/// # Arguments
+/// * `synth_ptr` - A pointer to the `KSynth` instance.
+/// * `new_velocity_curve_ptr` - A pointer to a C array of `float` (exactly 128 elements)
+///                              containing the new velocity curve data.
+///
+/// # Returns
+/// * `true` (1) if the velocity curve was successfully set.
+/// * `false` (0) if `synth_ptr` or `new_velocity_curve_ptr` is null.
+///
+/// # Safety
+/// * `synth_ptr` must be a valid pointer to a `KSynth` instance previously returned by `ksynth_new`.
+/// * `new_velocity_curve_ptr` must be a valid pointer to a readable block of memory
+///   containing `128` `f32` values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ksynth_set_velocity_curve(
+    synth_ptr: *mut KSynthPtr,
+    new_velocity_curve_ptr: *const f32,
+) -> bool {
+    if synth_ptr.is_null() {
+        return false;
+    }
+    if new_velocity_curve_ptr.is_null() {
+        return false;
+    }
+
+    let synth = unsafe { &mut *(synth_ptr as *mut KSynth) };
+
+    let mut new_curve_array = [0.0f32; 128];
+
+    unsafe {
+        let c_curve_slice = std::slice::from_raw_parts(new_velocity_curve_ptr, 128);
+        new_curve_array.copy_from_slice(c_curve_slice);
+    }
+
+    synth.set_velocity_curve(new_curve_array);
+    true
+}
+
+/// Resets the velocity curve of the KSynth instance to its default setting.
+///
+/// # Arguments
+/// * `synth_ptr` - A pointer to the `KSynth` instance.
+///
+/// # Returns
+/// * `true` (1) if the velocity curve was successfully reset.
+/// * `false` (0) if `synth_ptr` is null.
+///
+/// # Safety
+/// * `synth_ptr` must be a valid pointer to a `KSynth` instance previously returned by `ksynth_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ksynth_reset_velocity_curve(synth_ptr: *mut KSynthPtr) -> bool {
+    if synth_ptr.is_null() {
+        return false;
+    }
+
+    let synth = unsafe { &mut *(synth_ptr as *mut KSynth) };
+    synth.reset_velocity_curve();
+    true
+}
+
 /// Sets a new shared sample map for the synthesizer, replacing the existing one.
 ///
 /// # Arguments
