@@ -27,7 +27,7 @@ pub fn get_voice_size_byte() -> usize {
 ///
 /// # Parameters
 ///
-/// * `voice_count`: The number of voices.
+/// `voice_count`: The number of voices.
 ///
 /// # Returns
 ///
@@ -112,11 +112,11 @@ impl KSynth {
     ///
     /// # Parameters
     ///
-    /// * `sample_rate`: The sample rate (Hz) used for audio processing.
-    /// * `num_channel`: The number of output audio channels (mono or stereo).
-    /// * `max_polyphony`: The maximum number of voices the synthesizer can play simultaneously. If set to 0, it will default to 1. Cannot exceed `MAX_POLYPHONY`.
-    /// * `fade_out_sample`: The number of samples used for fade-out when a note is released or a voice stops.
-    /// * `samples`: A thread-safe reference to a map where MIDI note numbers are keys and `Sample` objects are values.
+    /// `sample_rate`: The sample rate (Hz) used for audio processing.
+    /// `num_channel`: The number of output audio channels (mono or stereo).
+    /// `max_polyphony`: The maximum number of voices the synthesizer can play simultaneously. If set to 0, it will default to 1. Cannot exceed `MAX_POLYPHONY`.
+    /// `fade_out_sample`: The number of samples used for fade-out when a note is released or a voice stops.
+    /// `samples`: A thread-safe reference to a map where MIDI note numbers are keys and `Sample` objects are values.
     /// The provided samples will be resampled to match the specified `sample_rate`.
     ///
     /// # Returns
@@ -180,7 +180,7 @@ impl KSynth {
     ///
     /// # Parameters
     ///
-    /// * `new_velocity_curve`: An array of 128 `f32` values representing the new
+    /// `new_velocity_curve`: An array of 128 `f32` values representing the new
     ///   velocity curve. Each element at index `i` (0-127) corresponds to the
     ///   amplitude scaling factor for MIDI velocity `i`.
     ///   Values outside the range [0.0, 1.0] will be clamped to this range.
@@ -204,7 +204,7 @@ impl KSynth {
     ///
     /// # Parameters
     ///
-    /// * `samples`: A thread-safe reference to a new sample map where MIDI note numbers are keys and `Sample` objects are values.
+    /// `samples`: A thread-safe reference to a new sample map where MIDI note numbers are keys and `Sample` objects are values.
     pub fn set_samples(&mut self, samples: Arc<RwLock<HashMap<u8, Sample>>>) {
         // Stop all sound
         for voice in self.voices.iter_mut() {
@@ -234,7 +234,7 @@ impl KSynth {
     ///
     /// # Parameters
     ///
-    /// * `cmd`: The encoded MIDI command.
+    /// `cmd`: The encoded MIDI command.
     pub fn queue_midi_cmd(&mut self, cmd: u32) {
         self.midi_queue.push(cmd);
     }
@@ -256,7 +256,7 @@ impl KSynth {
     ///
     /// # Parameters
     ///
-    /// * `fade_out_sample`: The new number of samples for fade-out.
+    /// `fade_out_sample`: The new number of samples for fade-out.
     pub fn set_fade_out_sample(&mut self, fade_out_sample: u64) {
         self.fade_out_sample = fade_out_sample;
     }
@@ -301,7 +301,7 @@ impl KSynth {
     ///
     /// # Parameters
     ///
-    /// * `max_polyphony`: The new maximum number of polyphony voices. Ignored if set to 0.
+    /// `max_polyphony`: The new maximum number of polyphony voices. Ignored if set to 0.
     pub fn set_max_polyphony(&mut self, max_polyphony: u32) {
         if max_polyphony == 0 {
             return;
@@ -330,13 +330,13 @@ impl KSynth {
     ///
     /// # Parameters
     ///
-    /// * `buffer`: A slice of `f32` values to write audio data into.
+    /// `buffer`: A slice of `f32` values to write audio data into.
     ///             The buffer length should be a multiple of the number of channels (1 for mono, 2 for stereo).
     ///
     /// # Returns
     ///
-    /// * `true`: If the buffer was filled (i.e., the frame count was greater than 0).
-    /// * `false`: If the buffer's frame count was 0 and processing was skipped.
+    /// `true`: If the buffer was filled (i.e., the frame count was greater than 0).
+    /// `false`: If the buffer's frame count was 0 and processing was skipped.
     ///
     /// # Panics
     ///

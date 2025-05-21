@@ -256,17 +256,17 @@ pub unsafe extern "C" fn ksynth_new(
 /// the MIDI velocity (0-127) and the value is the corresponding amplitude scaling factor.
 ///
 /// # Arguments
-/// * `synth_ptr` - A pointer to the `KSynth` instance.
-/// * `out_velocity_curve` - A pointer to a C array of `float` (at least 128 elements)
+/// `synth_ptr` - A pointer to the `KSynth` instance.
+/// `out_velocity_curve` - A pointer to a C array of `float` (at least 128 elements)
 ///                          where the velocity curve data will be copied.
 ///
 /// # Returns
-/// * `true` (1) if the velocity curve was successfully copied.
-/// * `false` (0) if `synth_ptr` or `out_velocity_curve` is null.
+/// `true` (1) if the velocity curve was successfully copied.
+/// `false` (0) if `synth_ptr` or `out_velocity_curve` is null.
 ///
 /// # Safety
-/// * `synth_ptr` must be a valid pointer to a `KSynth` instance previously returned by `ksynth_new`.
-/// * `out_velocity_curve` must be a valid pointer to a mutable block of memory capable of
+/// `synth_ptr` must be a valid pointer to a `KSynth` instance previously returned by `ksynth_new`.
+/// `out_velocity_curve` must be a valid pointer to a mutable block of memory capable of
 ///   holding at least `128 * std::mem::size_of::<f32>()` bytes. The caller is responsible
 ///   for allocating and managing this buffer.
 #[unsafe(no_mangle)]
@@ -301,17 +301,17 @@ pub unsafe extern "C" fn ksynth_get_velocity_curve(
 /// will be clamped to this range by the underlying synthesizer.
 ///
 /// # Arguments
-/// * `synth_ptr` - A pointer to the `KSynth` instance.
-/// * `new_velocity_curve_ptr` - A pointer to a C array of `float` (exactly 128 elements)
+/// `synth_ptr` - A pointer to the `KSynth` instance.
+/// `new_velocity_curve_ptr` - A pointer to a C array of `float` (exactly 128 elements)
 ///                              containing the new velocity curve data.
 ///
 /// # Returns
-/// * `true` (1) if the velocity curve was successfully set.
-/// * `false` (0) if `synth_ptr` or `new_velocity_curve_ptr` is null.
+/// `true` (1) if the velocity curve was successfully set.
+/// `false` (0) if `synth_ptr` or `new_velocity_curve_ptr` is null.
 ///
 /// # Safety
-/// * `synth_ptr` must be a valid pointer to a `KSynth` instance previously returned by `ksynth_new`.
-/// * `new_velocity_curve_ptr` must be a valid pointer to a readable block of memory
+/// `synth_ptr` must be a valid pointer to a `KSynth` instance previously returned by `ksynth_new`.
+/// `new_velocity_curve_ptr` must be a valid pointer to a readable block of memory
 ///   containing `128` `f32` values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ksynth_set_velocity_curve(
@@ -341,14 +341,14 @@ pub unsafe extern "C" fn ksynth_set_velocity_curve(
 /// Resets the velocity curve of the KSynth instance to its default setting.
 ///
 /// # Arguments
-/// * `synth_ptr` - A pointer to the `KSynth` instance.
+/// `synth_ptr` - A pointer to the `KSynth` instance.
 ///
 /// # Returns
-/// * `true` (1) if the velocity curve was successfully reset.
-/// * `false` (0) if `synth_ptr` is null.
+/// `true` (1) if the velocity curve was successfully reset.
+/// `false` (0) if `synth_ptr` is null.
 ///
 /// # Safety
-/// * `synth_ptr` must be a valid pointer to a `KSynth` instance previously returned by `ksynth_new`.
+/// `synth_ptr` must be a valid pointer to a `KSynth` instance previously returned by `ksynth_new`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ksynth_reset_velocity_curve(synth_ptr: *mut KSynthPtr) -> bool {
     if synth_ptr.is_null() {
