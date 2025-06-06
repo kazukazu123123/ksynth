@@ -149,7 +149,7 @@ impl KSynth {
             rendering_time: 0.0,
             samples: new_samples,
             num_channel,
-            voices: Vec::with_capacity(max_polyphony.max(1) as usize),
+            voices: Vec::with_capacity(max_polyphony.max(1).min(MAX_POLYPHONY) as usize),
             polyphony: 0,
             max_polyphony: max_polyphony.max(1).min(MAX_POLYPHONY),
         };
@@ -316,7 +316,7 @@ impl KSynth {
         self.voices.retain(|v| v.get_is_active());
 
         // Update max polyphony
-        self.max_polyphony = max_polyphony.min(MAX_POLYPHONY);
+        self.max_polyphony = max_polyphony.max(1).min(MAX_POLYPHONY);
 
         // Reset current polyphony
         self.polyphony = self.voices.len() as u32;
