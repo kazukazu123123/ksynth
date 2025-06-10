@@ -488,12 +488,20 @@ impl KSynth {
                     let mut amplitude = 1.0;
                     if voice.get_is_releasing() {
                         if let Some(frames_since_release) = voice.get_frames_since_release() {
-                            if frames_since_release >= fade_frames {
+                            // Adjust release time based on velocity
+                            // Lower velocity results in shorter release time
+                            let velocity_factor = voice.get_velocity() as f32 / 127.0;
+
+                            let velocity_fade_factor = 0.1 + 0.8 * velocity_factor;
+                            let adjusted_fade_frames =
+                                (fade_frames as f32 * velocity_fade_factor) as u64;
+
+                            if frames_since_release >= adjusted_fade_frames {
                                 voice.set_is_active(false);
                                 continue;
-                            } else if fade_frames > 0 {
-                                amplitude *=
-                                    1.0 - (frames_since_release as f32 / fade_frames as f32);
+                            } else if adjusted_fade_frames > 0 {
+                                amplitude *= 1.0
+                                    - (frames_since_release as f32 / adjusted_fade_frames as f32);
                             } else {
                                 amplitude = 0.0;
                             }
