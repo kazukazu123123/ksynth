@@ -398,7 +398,8 @@ pub unsafe extern "C" fn ksynth_set_samples(
 ///
 /// # Arguments
 /// `synth_ptr` - A pointer to the KSynth instance.
-/// `midi_cmd` - The MIDI command to be processed (e.g., note on, note off). Usually a `u32` representing the raw MIDI message.
+/// `midi_cmd` - The MIDI command to be processed. 
+///              Encoded as: `(status | (data1 << 8) | (data2 << 16))`
 ///
 /// # Safety
 /// `synth_ptr` must be a valid pointer to a `KSynth` previously returned by `ksynth_new`.
