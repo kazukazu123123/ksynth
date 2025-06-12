@@ -499,6 +499,43 @@ pub unsafe extern "C" fn ksynth_get_polyphony(synth_ptr: *mut KSynthPtr) -> i32 
     }
 }
 
+/// Retrieves the polyphony counts for each MIDI channel.
+///
+/// # Arguments
+/// * `synth_ptr` - A pointer to the KSynth instance.
+/// * `out_polyphony_counts` - A pointer to an array of at least 16 u32 elements where the polyphony counts will be stored.
+///
+/// # Returns
+/// `true` if successful, `false` if either pointer is invalid.
+///
+/// # Safety
+/// * `synth_ptr` must be a valid pointer to a `KSynth` instance previously created by `ksynth_new`.
+/// * `out_polyphony_counts` must point to a buffer capable of holding at least `16 * std::mem::size_of::<u32>()` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ksynth_get_polyphony_per_channel(
+    synth_ptr: *mut KSynthPtr,
+    out_polyphony_counts: *mut u32,
+) -> bool {
+    if synth_ptr.is_null() || out_polyphony_counts.is_null() {
+        return false;
+    }
+
+    let synth_ksynth_ptr = unsafe { *(synth_ptr as *mut *mut KSynth) };
+    if !synth_ksynth_ptr.is_null() {
+        let synth = unsafe { &*synth_ksynth_ptr };
+        let polyphony_array: [u32; 16] = synth.get_polyphony_per_channel();
+
+        unsafe {
+            let out_slice = std::slice::from_raw_parts_mut(out_polyphony_counts, 16);
+            out_slice.copy_from_slice(&polyphony_array);
+        }
+
+        true
+    } else {
+        false
+    }
+}
+
 /// Retrieves the maximum polyphony (maximum number of voices the synthesizer can handle).
 ///
 /// # Arguments

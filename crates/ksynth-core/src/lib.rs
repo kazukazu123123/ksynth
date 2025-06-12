@@ -93,6 +93,7 @@ pub struct KSynth {
     num_channel: Channel,
     voices: Vec<Voice>,
     polyphony: u32,
+    polyphony_per_channel: [u32; 16],
     max_polyphony: u32,
 }
 
@@ -151,6 +152,7 @@ impl KSynth {
             num_channel,
             voices: Vec::with_capacity(max_polyphony.max(1).min(MAX_POLYPHONY) as usize),
             polyphony: 0,
+            polyphony_per_channel: [0; 16],
             max_polyphony: max_polyphony.max(1).min(MAX_POLYPHONY),
         };
 
@@ -281,6 +283,15 @@ impl KSynth {
     /// The number of voices currently playing.
     pub fn get_polyphony(&self) -> u32 {
         self.polyphony
+    }
+
+    /// Returns the number of currently active voices (current polyphony) per MIDI channels.
+    ///
+    /// # Returns
+    ///
+    /// An array containing the number of voices currently playing for each MIDI channel (0-15).
+    pub fn get_polyphony_per_channel(&self) -> [u32; 16] {
+        self.polyphony_per_channel
     }
 
     /// Returns the maximum number of polyphony voices configured.
@@ -607,7 +618,14 @@ impl KSynth {
 
         // Remove inactive voices
         self.voices.retain(|v| v.get_is_active());
+
         self.polyphony = self.voices.len() as u32;
+        self.polyphony_per_channel = [0; 16];
+
+        for voice in self.voices.iter() {
+            let channel_idx = voice.get_channel() as usize;
+            self.polyphony_per_channel[channel_idx] += 1;
+        }
 
         true
     }
@@ -638,6 +656,7 @@ impl KSynth {
         let voice = Voice::new(channel, note, velocity);
         self.voices.push(voice);
         self.polyphony += 1;
+        self.polyphony_per_channel[channel as usize] += 1;
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {
