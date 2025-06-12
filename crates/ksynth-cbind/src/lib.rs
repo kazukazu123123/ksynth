@@ -398,7 +398,7 @@ pub unsafe extern "C" fn ksynth_set_samples(
 ///
 /// # Arguments
 /// `synth_ptr` - A pointer to the KSynth instance.
-/// `midi_cmd` - The MIDI command to be processed. 
+/// `midi_cmd` - The MIDI command to be processed.
 ///              Encoded as: `(status | (data1 << 8) | (data2 << 16))`
 ///
 /// # Safety
