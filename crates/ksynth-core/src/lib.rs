@@ -141,6 +141,9 @@ impl KSynth {
 
         let new_samples = Arc::new(RwLock::new(resampled_samples));
 
+        let max_polyphony_usize = max_polyphony.max(1).min(MAX_POLYPHONY) as usize;
+        let voices = vec![Voice::default(); max_polyphony_usize];
+
         let synth = Self {
             velocity_lut: Self::precompute_velocity_lut(),
             midi_queue: Vec::new(),
@@ -150,7 +153,7 @@ impl KSynth {
             rendering_time: 0.0,
             samples: new_samples,
             num_channel,
-            voices: Vec::with_capacity(max_polyphony.max(1).min(MAX_POLYPHONY) as usize),
+            voices,
             polyphony: 0,
             polyphony_per_channel: [0; 16],
             max_polyphony: max_polyphony.max(1).min(MAX_POLYPHONY),
@@ -212,9 +215,6 @@ impl KSynth {
         for voice in self.voices.iter_mut() {
             voice.set_is_active(false);
         }
-
-        // Remove inactive voice from voices array
-        self.voices.retain(|v| v.get_is_active());
 
         let mut resampled_samples = HashMap::new();
 
@@ -318,19 +318,26 @@ impl KSynth {
             return;
         }
 
-        // Stop all sound
-        for voice in self.voices.iter_mut() {
-            voice.set_is_active(false);
+        let new_max_polyphony_usize = max_polyphony.max(1).min(MAX_POLYPHONY) as usize;
+
+        if new_max_polyphony_usize == self.max_polyphony as usize {
+            return;
         }
 
-        // Remove inactive voice from voices array
-        self.voices.retain(|v| v.get_is_active());
+        self.voices
+            .resize_with(new_max_polyphony_usize, Voice::default);
 
-        // Update max polyphony
-        self.max_polyphony = max_polyphony.max(1).min(MAX_POLYPHONY);
+        self.max_polyphony = new_max_polyphony_usize as u32;
 
-        // Reset current polyphony
-        self.polyphony = self.voices.len() as u32;
+        self.polyphony = 0;
+        self.polyphony_per_channel = [0; 16];
+        for voice in self.voices.iter() {
+            if voice.get_is_active() {
+                let channel_idx = voice.get_channel() as usize;
+                self.polyphony_per_channel[channel_idx] += 1;
+                self.polyphony += 1;
+            }
+        }
     }
 
     /// Fills the given audio buffer with rendered audio data.
@@ -616,15 +623,14 @@ impl KSynth {
         let rendering_time = elapsed_time_ms / buffer_size as f32;
         self.rendering_time = rendering_time * 100.0;
 
-        // Remove inactive voices
-        self.voices.retain(|v| v.get_is_active());
-
-        self.polyphony = self.voices.len() as u32;
+        self.polyphony = 0;
         self.polyphony_per_channel = [0; 16];
-
         for voice in self.voices.iter() {
-            let channel_idx = voice.get_channel() as usize;
-            self.polyphony_per_channel[channel_idx] += 1;
+            if voice.get_is_active() {
+                let channel_idx = voice.get_channel() as usize;
+                self.polyphony_per_channel[channel_idx] += 1;
+                self.polyphony += 1;
+            }
         }
 
         true
@@ -640,23 +646,21 @@ impl KSynth {
             return;
         }
 
-        if self.polyphony >= self.max_polyphony {
-            if let Some(quietest_voice_index) = self
-                .voices
-                .iter()
-                .enumerate()
-                .min_by_key(|(_, v)| v.get_velocity())
-                .map(|(index, _)| index)
-            {
-                self.voices.remove(quietest_voice_index);
-                self.polyphony -= 1;
-            }
+        if let Some(voice_to_use) = self.voices.iter_mut().find(|v| !v.get_is_active()) {
+            voice_to_use.activate(channel, note, velocity);
+            self.polyphony += 1;
+            self.polyphony_per_channel[channel as usize] += 1;
+            return;
         }
 
-        let voice = Voice::new(channel, note, velocity);
-        self.voices.push(voice);
-        self.polyphony += 1;
-        self.polyphony_per_channel[channel as usize] += 1;
+        if let Some(quietest_voice) = self.voices.iter_mut().min_by_key(|v| v.get_velocity()) {
+            let old_channel = quietest_voice.get_channel() as usize;
+            self.polyphony_per_channel[old_channel] -= 1;
+
+            quietest_voice.activate(channel, note, velocity);
+
+            self.polyphony_per_channel[channel as usize] += 1;
+        }
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {

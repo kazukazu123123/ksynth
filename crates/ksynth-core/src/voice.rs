@@ -1,3 +1,4 @@
+#[derive(Clone, Debug)]
 pub struct Voice {
     sample_index: f32,
     frames_since_release: Option<u64>,
@@ -7,6 +8,21 @@ pub struct Voice {
     channel: u8,
     note: u8,
     velocity: u8,
+}
+
+impl Default for Voice {
+    fn default() -> Self {
+        Self {
+            sample_index: 0.0,
+            frames_since_release: None,
+            is_active: false,
+            is_releasing: false,
+            is_key_down: false,
+            channel: 0,
+            note: 0,
+            velocity: 0,
+        }
+    }
 }
 
 impl Voice {
@@ -21,6 +37,17 @@ impl Voice {
             note,
             velocity,
         }
+    }
+
+    pub fn activate(&mut self, channel: u8, note: u8, velocity: u8) {
+        self.sample_index = 0.0;
+        self.frames_since_release = None;
+        self.is_active = true;
+        self.is_releasing = false;
+        self.is_key_down = true;
+        self.channel = channel;
+        self.note = note;
+        self.velocity = velocity;
     }
 
     pub fn current_sample_index(&self) -> f32 {
@@ -76,6 +103,7 @@ impl Voice {
             *count += 1;
         }
     }
+
     pub fn set_is_releasing(&mut self, is_releasing: bool) {
         if is_releasing && !self.is_releasing {
             self.is_releasing = true;
