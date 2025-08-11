@@ -1,5 +1,5 @@
 use ksynth_core::sample::{Sample, SampleData, SampleLoop};
-use ksynth_core::{Channel, KSynth};
+use ksynth_core::{Channel, KSynth, drum_kit::DrumKit};
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::raw::c_char;
@@ -8,6 +8,7 @@ use std::sync::{Arc, RwLock};
 
 pub enum KSynthPtr {}
 pub enum KSynthSampleMapPtr {}
+pub enum KSynthDrumKitPtr {}
 
 struct SampleMap {
     samples: HashMap<u8, Arc<Sample>>,
@@ -107,6 +108,19 @@ pub extern "C" fn ksynth_sample_map_new() -> *mut KSynthSampleMapPtr {
     Box::into_raw(sample_map) as *mut KSynthSampleMapPtr
 }
 
+/// Creates a new, empty drum kit.
+///
+/// The returned pointer represents a shared drum kit and must be freed
+/// using `ksynth_drum_kit_free` when no longer needed.
+///
+/// # Returns
+/// A pointer to a new drum kit instance, or `null` on failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn ksynth_drum_kit_new() -> *mut KSynthDrumKitPtr {
+    let drum_kit = Box::new(DrumKit::new(HashMap::new()));
+    Box::into_raw(drum_kit) as *mut KSynthDrumKitPtr
+}
+
 /// Adds or replaces a sample in the specified sample map.
 ///
 /// This function copies the provided sample data into the map.
@@ -187,6 +201,88 @@ pub unsafe extern "C" fn ksynth_sample_map_free(ptr: *mut KSynthSampleMapPtr) {
     }
 }
 
+/// Adds or replaces a sample in the specified drum kit.
+///
+/// This function copies the provided sample data into the kit.
+/// For drum samples, it is generally recommended to pass `null` for `sample_loop`
+/// as drum sounds are typically one-shot and do not loop.
+///
+/// # Arguments
+/// `kit_ptr` - Pointer to the drum kit created by `ksynth_drum_kit_new`.
+/// `key` - The MIDI note value (`u8`) to associate with this sample.
+/// `sample_rate` - The sample rate of the sample in Hz.
+/// `sample_data_ptr` - Pointer to the raw sample data (i16). Interleaved for stereo.
+/// `channel` - Number of channels (1 for mono, 2 for stereo).
+/// `num_samples` - Total number of i16 values.
+/// `sample_loop` - Pointer to a `KSynthSampleLoop` or `null`.
+///
+/// # Returns
+/// `true` (1) on success, `false` (0) on failure (invalid arguments, kit pointer, etc.).
+///
+/// # Safety
+/// `kit_ptr` must be a valid pointer returned by `ksynth_drum_kit_new`.
+/// `sample_data_ptr` must point to `num_samples` valid i16 values.
+/// `sample_loop`, if not null, must point to a valid `KSynthSampleLoop`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ksynth_drum_kit_add_sample(
+    kit_ptr: *mut KSynthDrumKitPtr,
+    key: u8,
+    sample_rate: u32,
+    sample_data_ptr: *const i16,
+    channel: u8,
+    num_samples: usize,
+    sample_loop: *const KSynthSampleLoop,
+) -> bool {
+    if kit_ptr.is_null() || sample_data_ptr.is_null() || (channel != 1 && channel != 2) {
+        return false;
+    }
+
+    if channel == 2 && num_samples % 2 != 0 {
+        return false;
+    }
+
+    let drum_kit = unsafe { &mut *(kit_ptr as *mut DrumKit) };
+
+    let input_slice = unsafe { std::slice::from_raw_parts(sample_data_ptr, num_samples) };
+
+    let sample_data = if channel == 2 {
+        let stereo_data = input_slice
+            .chunks_exact(2)
+            .map(|chunk| (chunk[0], chunk[1]))
+            .collect::<Vec<(i16, i16)>>();
+        SampleData::Stereo(stereo_data)
+    } else {
+        SampleData::Mono(input_slice.to_vec())
+    };
+
+    let ksynth_loop = if sample_loop.is_null() {
+        None
+    } else {
+        let loop_info = unsafe { &*sample_loop };
+        Some(SampleLoop::new(loop_info.start, loop_info.end))
+    };
+
+    let sample = Sample::new(sample_rate, sample_data, ksynth_loop);
+
+    drum_kit.add_sample(key, sample);
+    true
+}
+
+/// Frees the memory associated with a drum kit.
+///
+/// # Arguments
+/// `kit_ptr` - Pointer to the drum kit to free.
+///
+/// # Safety
+/// `kit_ptr` must be a valid pointer returned by `ksynth_drum_kit_new`.
+/// After calling this function, the `kit_ptr` becomes invalid and must not be used again.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ksynth_drum_kit_free(ptr: *mut KSynthDrumKitPtr) {
+    if !ptr.is_null() {
+        let _ = unsafe { Box::from_raw(ptr as *mut DrumKit) };
+    }
+}
+
 /// Creates a new `KSynth` instance using a pre-built shared sample map.
 ///
 /// # Arguments
@@ -217,6 +313,7 @@ pub unsafe extern "C" fn ksynth_new(
     max_polyphony: u32,
     fade_out_sample: u64,
     sample_map_ptr: *const KSynthSampleMapPtr,
+    drum_kit_ptr: *const KSynthDrumKitPtr,
 ) -> *mut KSynthPtr {
     if sample_map_ptr.is_null() {
         return ptr::null_mut();
@@ -239,12 +336,20 @@ pub unsafe extern "C" fn ksynth_new(
         Err(_) => return ptr::null_mut(),
     };
 
+    let drum_kit = if drum_kit_ptr.is_null() {
+        None
+    } else {
+        let dk = unsafe { &*(drum_kit_ptr as *const DrumKit) };
+        Some(dk.clone())
+    };
+
     let synth = Box::new(KSynth::new(
         sample_rate,
         channel,
         max_polyphony,
         fade_out_sample,
         arc_map,
+        drum_kit,
     ));
 
     Box::into_raw(synth) as *mut KSynthPtr
@@ -392,6 +497,37 @@ pub unsafe extern "C" fn ksynth_set_samples(
 
     let arc_map = Arc::new(RwLock::new(converted_samples));
     synth.set_samples(arc_map);
+}
+
+/// Sets a new shared drum kit for the synthesizer, replacing the existing one.
+///
+/// # Arguments
+/// `synth_ptr` - A pointer to the KSynth instance.
+/// `drum_kit_ptr` - A pointer to the new shared drum kit.
+///
+/// # Safety
+/// `synth_ptr` must be a valid pointer to a `KSynth`.
+/// `drum_kit_ptr` must be a valid pointer returned by `ksynth_drum_kit_new`.
+/// This function clones the Arc, so the caller still needs to manage the lifetime of `drum_kit_ptr` using `ksynth_drum_kit_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ksynth_set_drum_kit(
+    synth_ptr: *mut KSynthPtr,
+    drum_kit_ptr: *const KSynthDrumKitPtr,
+) {
+    if synth_ptr.is_null() {
+        return;
+    }
+
+    let synth = unsafe { &mut *(synth_ptr as *mut KSynth) };
+
+    let drum_kit = if drum_kit_ptr.is_null() {
+        None
+    } else {
+        let dk = unsafe { &*(drum_kit_ptr as *const DrumKit) };
+        Some(dk.clone())
+    };
+
+    synth.set_drum_kit(drum_kit);
 }
 
 /// Queues a MIDI command for processing by the synthesizer.

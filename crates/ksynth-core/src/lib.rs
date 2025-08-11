@@ -1,6 +1,7 @@
 pub mod midi_channel;
 pub mod sample;
 pub mod voice;
+pub mod drum_kit;
 
 use midi_channel::MidiChannel;
 use std::{
@@ -11,6 +12,7 @@ use std::{
 
 use sample::{Sample, SampleData};
 use voice::Voice;
+use drum_kit::DrumKit;
 
 pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voice>() as u32);
 
@@ -95,6 +97,7 @@ pub struct KSynth {
     polyphony: u32,
     polyphony_per_channel: [u32; 16],
     max_polyphony: u32,
+    drum_kit: Option<DrumKit>,
 }
 
 impl KSynth {
@@ -129,6 +132,7 @@ impl KSynth {
         max_polyphony: u32,
         fade_out_sample: u64,
         samples: Arc<RwLock<HashMap<u8, Sample>>>,
+        drum_kit: Option<DrumKit>,
     ) -> Self {
         let mut resampled_samples = HashMap::new();
 
@@ -154,7 +158,12 @@ impl KSynth {
             polyphony: 0,
             polyphony_per_channel: [0; 16],
             max_polyphony: max_polyphony.max(1).min(MAX_POLYPHONY),
+            drum_kit,
         };
+
+        if let Some(dk) = &synth.drum_kit {
+            dk.resample_all_drums(sample_rate);
+        }
 
         synth
     }
@@ -227,6 +236,26 @@ impl KSynth {
 
         let new_samples = Arc::new(RwLock::new(resampled_samples));
         self.samples = new_samples;
+    }
+
+    /// Sets a new drum kit for the synthesizer.
+    ///
+    /// # Parameters
+    ///
+    /// `drum_kit`: An `Option<DrumKit>` representing the new drum kit.
+    pub fn set_drum_kit(&mut self, drum_kit: Option<DrumKit>) {
+        // Stop all sound (for drums)
+        if let Some(dk) = self.drum_kit.as_mut() {
+            for voice in dk.get_drum_voices_mut().iter_mut() {
+                voice.set_is_active(false);
+            }
+            dk.get_drum_voices_mut().retain(|v| v.get_is_active());
+        }
+
+        self.drum_kit = drum_kit;
+        if let Some(dk) = &self.drum_kit {
+            dk.resample_all_drums(self.sample_rate);
+        }
     }
 
     /// Adds a MIDI command to the internal queue.
@@ -608,6 +637,19 @@ impl KSynth {
                     voice.set_is_active(false);
                 }
             }
+
+            // Process drum voices
+            if let Some(dk) = self.drum_kit.as_mut() {
+                dk.process_drum_voices(
+                    buffer,
+                    buffer_index,
+                    fade_frames,
+                    &self.velocity_lut,
+                    &self.midi_channel,
+                    self.num_channel,
+                    self.sample_rate,
+                );
+            }
         }
 
         let elapsed_time = rendering_time_start.elapsed();
@@ -620,7 +662,16 @@ impl KSynth {
         // Remove inactive voices
         self.voices.retain(|v| v.get_is_active());
 
+        // Remove inactive drum voices and update polyphony
+        if let Some(dk) = self.drum_kit.as_mut() {
+            dk.clean_up_inactive_voices();
+        }
+
         self.polyphony = self.voices.len() as u32;
+        if let Some(dk) = &self.drum_kit {
+            self.polyphony += dk.get_drum_voices().len() as u32;
+        }
+
         self.polyphony_per_channel = [0; 16];
 
         for voice in self.voices.iter() {
@@ -628,11 +679,18 @@ impl KSynth {
             self.polyphony_per_channel[channel_idx] += 1;
         }
 
+        if let Some(dk) = &self.drum_kit {
+            for voice in dk.get_drum_voices().iter() {
+                let channel_idx = voice.get_channel() as usize;
+                self.polyphony_per_channel[channel_idx] += 1;
+            }
+        }
+
         true
     }
 
     fn note_on(&mut self, channel: u8, note: u8, velocity: u8) {
-        if channel > 15 || note > 127 || velocity > 127 || channel == 9 {
+        if channel > 15 || note > 127 || velocity > 127 {
             return;
         }
 
@@ -641,6 +699,34 @@ impl KSynth {
             return;
         }
 
+        // Handle drum channel (MIDI channel 10)
+        if channel == 9 {
+            if let Some(dk) = self.drum_kit.as_mut() {
+                // Check total polyphony before adding drum voice
+                let current_total_polyphony = self.voices.len() as u32 + dk.get_drum_voices().len() as u32;
+                if current_total_polyphony >= self.max_polyphony {
+                    // Find and remove the quietest voice (either melodic or drum)
+                    let mut all_voices: Vec<&mut Voice> = self.voices.iter_mut().collect();
+                    all_voices.extend(dk.get_drum_voices_mut().iter_mut());
+
+                    if let Some(quietest_voice_index) = all_voices.iter().enumerate()
+                        .min_by_key(|(_, v)| v.get_velocity())
+                        .map(|(index, _)| index)
+                    {
+                        // Determine if it's a melodic or drum voice and remove it
+                        if quietest_voice_index < self.voices.len() {
+                            self.voices.remove(quietest_voice_index);
+                        } else {
+                            dk.get_drum_voices_mut().remove(quietest_voice_index - self.voices.len());
+                        }
+                    }
+                }
+                dk.note_on_drum(note, velocity);
+            }
+            return;
+        }
+
+        // Handle melodic channels
         if self.polyphony >= self.max_polyphony {
             if let Some(quietest_voice_index) = self
                 .voices
@@ -654,17 +740,26 @@ impl KSynth {
             }
         }
 
-        let voice = Voice::new(channel, note, velocity);
+        let voice = Voice::new(channel, note, velocity, None);
         self.voices.push(voice);
         self.polyphony += 1;
         self.polyphony_per_channel[channel as usize] += 1;
     }
 
     fn note_off(&mut self, channel: u8, note: u8) {
-        if channel > 15 || note > 127 || channel == 9 {
+        if channel > 15 || note > 127 {
             return;
         }
 
+        // Handle drum channel (MIDI channel 10)
+        if channel == 9 {
+            if let Some(dk) = self.drum_kit.as_mut() {
+                dk.note_off_drum(note);
+            }
+            return;
+        }
+
+        // Handle melodic channels
         for voice in self.voices.iter_mut() {
             if voice.get_channel() == channel && voice.get_note() == note && voice.get_is_key_down()
             {

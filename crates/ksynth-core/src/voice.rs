@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct Voice {
     sample_index: f32,
     frames_since_release: Option<u64>,
@@ -7,10 +8,11 @@ pub struct Voice {
     channel: u8,
     note: u8,
     velocity: u8,
+    choke_group_id: Option<u8>,
 }
 
 impl Voice {
-    pub fn new(channel: u8, note: u8, velocity: u8) -> Self {
+    pub fn new(channel: u8, note: u8, velocity: u8, choke_group_id: Option<u8>) -> Self {
         Self {
             sample_index: 0.0,
             frames_since_release: None,
@@ -20,7 +22,12 @@ impl Voice {
             channel,
             note,
             velocity,
+            choke_group_id,
         }
+    }
+
+    pub fn get_choke_group_id(&self) -> Option<u8> {
+        self.choke_group_id
     }
 
     pub fn current_sample_index(&self) -> f32 {
