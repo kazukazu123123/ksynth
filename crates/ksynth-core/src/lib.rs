@@ -655,7 +655,7 @@ impl KSynth {
         let elapsed_time = rendering_time_start.elapsed();
         let elapsed_time_s = elapsed_time.as_secs_f32();
         let buffer_duration_s = buffer_size as f32 / self.sample_rate as f32;
-        let rendering_time = (elapsed_time_s / buffer_duration_s) * 100.0;
+        let rendering_time = elapsed_time_s / buffer_duration_s;
 
         self.rendering_time = rendering_time;
 
