@@ -735,7 +735,7 @@ impl KSynth {
                 .min_by_key(|(_, v)| v.get_velocity())
                 .map(|(index, _)| index)
             {
-                self.voices.remove(quietest_voice_index);
+                self.voices.swap_remove(quietest_voice_index);
                 self.polyphony -= 1;
             }
         }
