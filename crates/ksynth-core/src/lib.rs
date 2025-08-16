@@ -715,7 +715,7 @@ impl KSynth {
                     {
                         // Determine if it's a melodic or drum voice and remove it
                         if quietest_voice_index < self.voices.len() {
-                            self.voices.remove(quietest_voice_index);
+                            self.voices.swap_remove(quietest_voice_index);
                         } else {
                             dk.get_drum_voices_mut().remove(quietest_voice_index - self.voices.len());
                         }
@@ -735,7 +735,7 @@ impl KSynth {
                 .min_by_key(|(_, v)| v.get_velocity())
                 .map(|(index, _)| index)
             {
-                self.voices.swap_remove(quietest_voice_index);
+                self.voices.remove(quietest_voice_index);
                 self.polyphony -= 1;
             }
         }
