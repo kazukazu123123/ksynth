@@ -1,7 +1,7 @@
+pub mod drum_kit;
 pub mod midi_channel;
 pub mod sample;
 pub mod voice;
-pub mod drum_kit;
 
 use midi_channel::MidiChannel;
 use std::{
@@ -12,7 +12,10 @@ use std::{
 
 use sample::{Sample, SampleData};
 use voice::Voice;
+
 use drum_kit::DrumKit;
+
+const INV_I16_MAX: f32 = 1.0 / i16::MAX as f32;
 
 pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voice>() as u32);
 
@@ -91,7 +94,7 @@ pub struct KSynth {
     sample_rate: u32,
     fade_out_sample: u64,
     rendering_time: f32,
-    samples: Arc<RwLock<HashMap<u8, Sample>>>,
+    samples: Arc<RwLock<[Option<Sample>; 128]>>,
     num_channel: Channel,
     voices: Vec<Voice>,
     polyphony: u32,
@@ -134,16 +137,22 @@ impl KSynth {
         samples: Arc<RwLock<HashMap<u8, Sample>>>,
         drum_kit: Option<DrumKit>,
     ) -> Self {
-        let mut resampled_samples = HashMap::new();
+        let mut resampled_samples_vec: Vec<Option<Sample>> = vec![None; 128];
 
         if let Ok(samples_guard) = samples.read() {
             for (&note, sample) in samples_guard.iter() {
                 let resampled = sample.resample(sample_rate);
-                resampled_samples.insert(note, resampled);
+                if (note as usize) < resampled_samples_vec.len() {
+                    resampled_samples_vec[note as usize] = Some(resampled);
+                }
             }
         }
 
-        let new_samples = Arc::new(RwLock::new(resampled_samples));
+        let resampled_samples_array: [Option<Sample>; 128] = resampled_samples_vec
+        .try_into()
+        .expect("Failed to convert Vec<Option<Sample>> to [Option<Sample>; 128]. This indicates an internal logic error.");
+
+        let new_samples = Arc::new(RwLock::new(resampled_samples_array));
 
         let synth = Self {
             velocity_lut: Self::precompute_velocity_lut(),
@@ -225,16 +234,24 @@ impl KSynth {
         // Remove inactive voice from voices array
         self.voices.retain(|v| v.get_is_active());
 
-        let mut resampled_samples = HashMap::new();
+        let mut resampled_samples_vec: Vec<Option<Sample>> = vec![None; 128];
 
         if let Ok(samples_guard) = samples.read() {
             for (&note, sample) in samples_guard.iter() {
                 let resampled = sample.resample(self.sample_rate);
-                resampled_samples.insert(note, resampled);
+
+                if (note as usize) < resampled_samples_vec.len() {
+                    resampled_samples_vec[note as usize] = Some(resampled);
+                }
             }
         }
 
-        let new_samples = Arc::new(RwLock::new(resampled_samples));
+        let resampled_samples_array: [Option<Sample>; 128] = resampled_samples_vec
+        .try_into()
+        .expect("Failed to convert Vec<Option<Sample>> to [Option<Sample>; 128] in set_samples. This indicates an internal logic error.");
+
+        let new_samples = Arc::new(RwLock::new(resampled_samples_array));
+
         self.samples = new_samples;
     }
 
@@ -514,7 +531,12 @@ impl KSynth {
             for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
                 let voice_releasing = voice.get_is_releasing();
 
-                if let Some(sample) = samples_guard.get(&voice.get_note()) {
+                let note_index = voice.get_note() as usize;
+
+                if let Some(sample) = samples_guard
+                    .get(note_index)
+                    .and_then(|opt_s| opt_s.as_ref())
+                {
                     let sample_data = sample.get_sample_data();
                     let sample_length = sample.sample_length();
                     let sample_loop = sample.get_sample_loop();
@@ -576,7 +598,7 @@ impl KSynth {
                                 let s1 = data.get(sample_index).copied().unwrap_or(0) as f32;
                                 let s2 = data.get(next_index).copied().unwrap_or(0) as f32;
                                 let value = s1 + (s2 - s1) * frac;
-                                let val = value / i16::MAX as f32;
+                                let val = value * INV_I16_MAX;
                                 (val, val)
                             }
                             SampleData::Stereo(data) => {
@@ -584,7 +606,7 @@ impl KSynth {
                                 let (l2, r2) = data.get(next_index).copied().unwrap_or((0, 0));
                                 let left = l1 as f32 + (l2 as f32 - l1 as f32) * frac;
                                 let right = r1 as f32 + (r2 as f32 - r1 as f32) * frac;
-                                (left / i16::MAX as f32, right / i16::MAX as f32)
+                                (left * INV_I16_MAX, right * INV_I16_MAX)
                             }
                         };
 
@@ -703,13 +725,16 @@ impl KSynth {
         if channel == 9 {
             if let Some(dk) = self.drum_kit.as_mut() {
                 // Check total polyphony before adding drum voice
-                let current_total_polyphony = self.voices.len() as u32 + dk.get_drum_voices().len() as u32;
+                let current_total_polyphony =
+                    self.voices.len() as u32 + dk.get_drum_voices().len() as u32;
                 if current_total_polyphony >= self.max_polyphony {
                     // Find and remove the quietest voice (either melodic or drum)
                     let mut all_voices: Vec<&mut Voice> = self.voices.iter_mut().collect();
                     all_voices.extend(dk.get_drum_voices_mut().iter_mut());
 
-                    if let Some(quietest_voice_index) = all_voices.iter().enumerate()
+                    if let Some(quietest_voice_index) = all_voices
+                        .iter()
+                        .enumerate()
                         .min_by_key(|(_, v)| v.get_velocity())
                         .map(|(index, _)| index)
                     {
@@ -717,7 +742,8 @@ impl KSynth {
                         if quietest_voice_index < self.voices.len() {
                             self.voices.swap_remove(quietest_voice_index);
                         } else {
-                            dk.get_drum_voices_mut().remove(quietest_voice_index - self.voices.len());
+                            dk.get_drum_voices_mut()
+                                .remove(quietest_voice_index - self.voices.len());
                         }
                     }
                 }
