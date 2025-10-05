@@ -17,6 +17,9 @@ use drum_kit::DrumKit;
 
 const INV_I16_MAX: f32 = 1.0 / i16::MAX as f32;
 
+#[cfg(target_pointer_width = "32")]
+pub const MAX_POLYPHONY: u32 = 16777216; // 2^24
+#[cfg(not(target_pointer_width = "32"))]
 pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voice>() as u32);
 
 pub const KSYNTH_BUILD_GIT_COMMIT_HASH: &str = env!("KSYNTH_BUILD_GIT_COMMIT_HASH");
