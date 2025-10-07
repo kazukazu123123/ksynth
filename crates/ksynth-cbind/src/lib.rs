@@ -53,12 +53,12 @@ pub extern "C" fn ksynth_get_max_supported_polyphony() -> u32 {
 /// # Returns
 /// `*const c_char` - Pointer to a C string (must be freed by the caller) or null.
 #[unsafe(no_mangle)]
-pub extern "C" fn ksynth_get_git_commit_hash() -> *const c_char {
+pub extern "C" fn ksynth_get_git_commit_hash() -> *mut c_char {
     let git_commit_revision = ksynth_core::KSYNTH_BUILD_GIT_COMMIT_HASH;
 
     match CString::new(git_commit_revision) {
         Ok(c_string) => c_string.into_raw(),
-        Err(_) => ptr::null(),
+        Err(_) => ptr::null_mut(),
     }
 }
 
