@@ -1,7 +1,6 @@
 use ksynth_core::sample::{Sample, SampleData, SampleLoop};
 use ksynth_core::{Channel, KSynth, drum_kit::DrumKit};
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
 use std::sync::{Arc, RwLock};
