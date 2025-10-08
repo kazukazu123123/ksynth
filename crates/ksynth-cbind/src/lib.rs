@@ -45,32 +45,11 @@ pub extern "C" fn ksynth_get_max_supported_polyphony() -> u32 {
 
 /// Returns the git commit hash used at build time.
 ///
-/// If successful, returns a pointer to a null-terminated C string containing the commit hash.
-/// The caller is responsible for freeing this string using a corresponding free function
-/// (e.g., `ksynth_free_string` if you provide one, or standard `free` if allocated via C allocator).
-/// If the hash is not available, returns a null pointer.
-///
 /// # Returns
-/// `*const c_char` - Pointer to a C string (must be freed by the caller) or null.
+/// `*const c_char` - Pointer to a C string (must NOT be freed by the caller) or null.
 #[unsafe(no_mangle)]
-pub extern "C" fn ksynth_get_git_commit_hash() -> *mut c_char {
-    let git_commit_revision = ksynth_core::KSYNTH_BUILD_GIT_COMMIT_HASH;
-
-    match CString::new(git_commit_revision) {
-        Ok(c_string) => c_string.into_raw(),
-        Err(_) => ptr::null_mut(),
-    }
-}
-
-/// Frees a string previously returned by ksynth_get_git_commit_hash.
-///
-/// # Arguments
-/// `string` - The pointer to the string to free.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ksynth_free_git_commit_hash_string(string: *mut c_char) {
-    if !string.is_null() {
-        let _ = unsafe { CString::from_raw(string) };
-    }
+pub extern "C" fn ksynth_get_git_commit_hash() -> *const c_char {
+    ksynth_core::KSYNTH_BUILD_GIT_COMMIT_HASH.as_ptr() as *const c_char
 }
 
 /// Returns the memory size in bytes required for a single voice instance.
