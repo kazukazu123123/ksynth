@@ -1,9 +1,11 @@
 pub mod drum_kit;
 pub mod midi_channel;
+pub mod midi_cc;
 pub mod sample;
 pub mod voice;
 
 use midi_channel::MidiChannel;
+use midi_cc::handle_control_change;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -438,59 +440,18 @@ impl KSynth {
                 }
                 // Control Change
                 0xB0 => {
-                    match data1 {
-                        // Pan
-                        0x0A => {
-                            let pan = (data2 as f32 / 127.0) * 2.0 - 1.0;
-                            self.midi_channel[channel as usize].set_pan(pan);
-                        }
-                        // Damper pedal
-                        0x40 => {
-                            let is_sustain = data2 > 63;
-                            self.midi_channel[channel as usize].set_sustain(is_sustain);
+                    handle_control_change(&mut self.midi_channel[channel as usize], data1, data2);
 
-                            if !is_sustain {
-                                for voice in self.voices.iter_mut() {
-                                    if voice.get_channel() == channel
-                                        && !voice.get_is_key_down()
-                                        && !voice.get_is_releasing()
-                                    {
-                                        voice.set_is_releasing(true);
-                                    }
-                                }
-                            }
-                        }
-                        // Volume
-                        0x07 => {
-                            self.midi_channel[channel as usize].set_volume(data2);
-                        }
-                        // RPN MSB: CC101 = 0
-                        0x65 => {
-                            // CC101 (RPN MSB)
-                            if data2 == 0 {
-                                self.midi_channel[channel as usize].set_rpn_msb(0);
-                            }
-                        }
-                        // RPN LSB: CC100 = 0
-                        0x64 => {
-                            // CC100 (RPN LSB)
-                            if data2 == 0 {
-                                self.midi_channel[channel as usize].set_rpn_lsb(0);
-                            }
-                        }
-                        // Data Entry MSB: CC6 (Pitch Bend Sensitivity)
-                        0x06 => {
-                            // CC6 (Data Entry)
-                            if self.midi_channel[channel as usize].get_rpn_msb() == 0
-                                && self.midi_channel[channel as usize].get_rpn_lsb() == 0
+                    // Special handling for sustain pedal release to trigger voice release
+                    if data1 == 0x40 && data2 <= 63 {
+                        for voice in self.voices.iter_mut() {
+                            if voice.get_channel() == channel
+                                && !voice.get_is_key_down()
+                                && !voice.get_is_releasing()
                             {
-                                // Set pitch bend range in semitones
-                                let bend_range = data2 as u8;
-                                self.midi_channel[channel as usize]
-                                    .set_bend_range_semitone(bend_range);
+                                voice.set_is_releasing(true);
                             }
                         }
-                        _ => {}
                     }
                 }
                 0xE0 => {
