@@ -601,7 +601,7 @@ impl KSynth {
                                 let s1 = data.get(sample_index).copied().unwrap_or(0) as f32;
                                 let s2 = data.get(next_index).copied().unwrap_or(0) as f32;
                                 let value = s1 + (s2 - s1) * frac;
-                                let val = value * INV_I16_MAX;
+                                let val = value * INV_I16_MAX * 0.5;
                                 (val, val)
                             }
                             SampleData::Stereo(data) => {
