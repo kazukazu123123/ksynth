@@ -596,20 +596,20 @@ impl KSynth {
                         let next_index = (sample_index + 1).min(sample_data_len - 1);
                         let frac = sample_index_f - sample_index as f32;
 
-                        let (left, right) = match sample_data {
+                        let (left_val, right_val, is_mono_source) = match sample_data {
                             SampleData::Mono(data) => {
                                 let s1 = data.get(sample_index).copied().unwrap_or(0) as f32;
                                 let s2 = data.get(next_index).copied().unwrap_or(0) as f32;
                                 let value = s1 + (s2 - s1) * frac;
                                 let val = value * INV_I16_MAX;
-                                (val, val)
+                                (val, val, true)
                             }
                             SampleData::Stereo(data) => {
                                 let (l1, r1) = data.get(sample_index).copied().unwrap_or((0, 0));
                                 let (l2, r2) = data.get(next_index).copied().unwrap_or((0, 0));
                                 let left = l1 as f32 + (l2 as f32 - l1 as f32) * frac;
                                 let right = r1 as f32 + (r2 as f32 - r1 as f32) * frac;
-                                (left * INV_I16_MAX, right * INV_I16_MAX)
+                                (left * INV_I16_MAX, right * INV_I16_MAX, false)
                             }
                         };
 
@@ -620,14 +620,18 @@ impl KSynth {
 
                         match self.num_channel {
                             Channel::Mono => {
-                                buffer[buffer_index] += (left + right) * 0.5 * amplitude;
+                                buffer[buffer_index] += (left_val + right_val) * 0.5 * amplitude;
                             }
                             Channel::Stereo => {
-                                buffer[buffer_index] += left * amplitude * left_pan;
-                                buffer[buffer_index + 1] += right * amplitude * right_pan;
+                                let (final_left, final_right) = if is_mono_source {
+                                    (left_val * 0.5, right_val * 0.5)
+                                } else {
+                                    (left_val, right_val)
+                                };
+                                buffer[buffer_index] += final_left * amplitude * left_pan;
+                                buffer[buffer_index + 1] += final_right * amplitude * right_pan;
                             }
                         }
-
                         // Advance sample index with pitch factor
                         let sample_playback_rate =
                             sample.get_sample_rate() as f32 / self.sample_rate as f32;
