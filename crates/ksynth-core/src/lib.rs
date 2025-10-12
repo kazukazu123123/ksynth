@@ -27,7 +27,7 @@ pub const MAX_POLYPHONY: u32 = 4 * 1024 * 1024 * (1024 / std::mem::size_of::<Voi
 pub const KSYNTH_BUILD_GIT_COMMIT_HASH: &str = env!("KSYNTH_BUILD_GIT_COMMIT_HASH");
 
 /// Returns the size of a `Voice` in bytes.
-pub fn get_voice_size_byte() -> usize {
+pub fn ksynth_get_voice_size_byte() -> usize {
     std::mem::size_of::<Voice>()
 }
 
@@ -42,8 +42,8 @@ pub fn get_voice_size_byte() -> usize {
 /// # Returns
 ///
 /// The total memory usage in bytes.
-pub fn calculate_voice_memory_usage(voice_count: usize) -> usize {
-    let voice_memory_usage = get_voice_size_byte() * voice_count;
+pub fn ksynth_calculate_voice_memory_usage(voice_count: usize) -> usize {
+    let voice_memory_usage = ksynth_get_voice_size_byte() * voice_count;
 
     voice_memory_usage
 }
