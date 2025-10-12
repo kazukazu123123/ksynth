@@ -57,7 +57,7 @@ pub extern "C" fn ksynth_get_git_commit_hash() -> *const c_char {
 /// The memory usage in bytes for one voice.
 #[unsafe(no_mangle)]
 pub extern "C" fn ksynth_get_voice_size_byte() -> usize {
-    ksynth_core::get_voice_size_byte()
+    ksynth_core::ksynth_get_voice_size_byte()
 }
 
 /// Calculates the memory usage for a given number of voices.
@@ -68,7 +68,7 @@ pub extern "C" fn ksynth_get_voice_size_byte() -> usize {
 /// The estimated memory usage in bytes for the specified number of voices.
 #[unsafe(no_mangle)]
 pub extern "C" fn ksynth_calculate_voice_memory_usage(voice_count: usize) -> usize {
-    ksynth_core::calculate_voice_memory_usage(voice_count)
+    ksynth_core::ksynth_calculate_voice_memory_usage(voice_count)
 }
 
 /// Creates a new, empty sample map.
