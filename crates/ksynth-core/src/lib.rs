@@ -1,16 +1,18 @@
 pub mod drum_kit;
-pub mod midi_channel;
 pub mod midi_cc;
+pub mod midi_channel;
 pub mod sample;
 pub mod voice;
 
-use midi_channel::MidiChannel;
 use midi_cc::handle_control_change;
+use midi_channel::MidiChannel;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
     time::Instant,
 };
+
+use kanal::{Receiver, Sender, unbounded};
 
 use sample::{Sample, SampleData};
 use voice::Voice;
@@ -94,7 +96,8 @@ impl_channel_try_from!(i8, i16, i32, i64, i128, isize);
 
 pub struct KSynth {
     velocity_lut: [f32; 128],
-    midi_queue: Vec<u32>,
+    midi_sender: Sender<u32>,
+    midi_receiver: Receiver<u32>,
     midi_channel: [MidiChannel; 16],
     sample_rate: u32,
     fade_out_sample: u64,
@@ -159,9 +162,12 @@ impl KSynth {
 
         let new_samples = Arc::new(RwLock::new(resampled_samples_array));
 
+        let (midi_sender, midi_receiver) = unbounded();
+
         let synth = Self {
             velocity_lut: Self::precompute_velocity_lut(),
-            midi_queue: Vec::new(),
+            midi_sender,
+            midi_receiver,
             midi_channel: [MidiChannel::default(); 16],
             sample_rate,
             fade_out_sample,
@@ -280,7 +286,7 @@ impl KSynth {
         }
     }
 
-    /// Adds a MIDI command to the internal queue.
+    /// Adds a MIDI command to the internal queue in a thread-safe.
     ///
     /// The added MIDI command will be processed during the next call to `fill_buffer`.
     /// The command must be encoded as a `u32` (e.g., `(status | (data1 << 8) | (data2 << 16))`).
@@ -289,7 +295,7 @@ impl KSynth {
     ///
     /// `cmd`: The encoded MIDI command.
     pub fn queue_midi_cmd(&mut self, cmd: u32) {
-        self.midi_queue.push(cmd);
+        self.midi_sender.send(cmd).unwrap();
     }
 
     /// Returns the number of samples currently set for fade-out.
@@ -417,8 +423,9 @@ impl KSynth {
             return false;
         }
 
-        let midi_cmds = std::mem::take(&mut self.midi_queue);
-        for cmd in midi_cmds {
+        let mut midi_cmds_vec = Vec::new();
+        self.midi_receiver.drain_into(&mut midi_cmds_vec).unwrap();
+        for cmd in midi_cmds_vec {
             let status = (cmd & 0xFF) as u8;
             let data1 = ((cmd >> 8) & 0xFF) as u8;
             let data2 = ((cmd >> 16) & 0xFF) as u8;
