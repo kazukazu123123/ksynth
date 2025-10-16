@@ -423,9 +423,7 @@ impl KSynth {
             return false;
         }
 
-        let mut midi_cmds_vec = Vec::new();
-        self.midi_receiver.drain_into(&mut midi_cmds_vec).unwrap();
-        for cmd in midi_cmds_vec {
+        while let Ok(cmd) = self.midi_receiver.recv() {
             let status = (cmd & 0xFF) as u8;
             let data1 = ((cmd >> 8) & 0xFF) as u8;
             let data2 = ((cmd >> 16) & 0xFF) as u8;
