@@ -423,7 +423,7 @@ impl KSynth {
             return false;
         }
 
-        while let Ok(Some(cmd)) = self.midi_receiver.try_recv() {
+        while let Ok(cmd) = self.midi_receiver.recv() {
             let status = (cmd & 0xFF) as u8;
             let data1 = ((cmd >> 8) & 0xFF) as u8;
             let data2 = ((cmd >> 16) & 0xFF) as u8;
