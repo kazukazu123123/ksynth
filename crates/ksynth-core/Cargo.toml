@@ -4,4 +4,4 @@ version.workspace = true
 edition.workspace = true
 
 [build-dependencies]
-gix = { version = "0.72.1", default-features = false, features = ["revision", "status"] }
+gix = { version = "0.73.0", default-features = false, features = ["revision", "status"] }
