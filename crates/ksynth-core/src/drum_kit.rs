@@ -1,12 +1,12 @@
+use crate::Channel;
+use crate::midi_channel::MidiChannel;
+use crate::sample::Sample;
+use crate::sample::SampleData;
+use crate::voice::Voice;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
 };
-use crate::sample::Sample;
-use crate::voice::Voice;
-use crate::Channel;
-use crate::midi_channel::MidiChannel;
-use crate::sample::SampleData;
 
 #[derive(Clone)]
 pub struct DrumKit {
@@ -106,13 +106,15 @@ impl DrumKit {
                     if let Some(frames_since_release) = voice.get_frames_since_release() {
                         let velocity_factor = voice.get_velocity() as f32 / 127.0;
                         let velocity_fade_factor = 0.1 + 0.8 * velocity_factor;
-                        let adjusted_fade_frames = (fade_frames as f32 * velocity_fade_factor) as u64;
+                        let adjusted_fade_frames =
+                            (fade_frames as f32 * velocity_fade_factor) as u64;
 
                         if frames_since_release >= adjusted_fade_frames {
                             voice.set_is_active(false);
                             continue;
                         } else if adjusted_fade_frames > 0 {
-                            amplitude *= 1.0 - (frames_since_release as f32 / adjusted_fade_frames as f32);
+                            amplitude *=
+                                1.0 - (frames_since_release as f32 / adjusted_fade_frames as f32);
                         } else {
                             amplitude = 0.0;
                         }
@@ -126,7 +128,8 @@ impl DrumKit {
 
                 amplitude *= velocity_factor * volume_factor;
 
-                let pitch_factor = midi_channel_states[voice.get_channel() as usize].get_pitch_factor();
+                let pitch_factor =
+                    midi_channel_states[voice.get_channel() as usize].get_pitch_factor();
 
                 // Sample processing
                 let sample_data_len = match sample_data {
@@ -173,12 +176,14 @@ impl DrumKit {
                     }
 
                     // Advance sample index with pitch factor
-                    let sample_playback_rate = sample.get_sample_rate() as f32 / ksynth_sample_rate as f32;
+                    let sample_playback_rate =
+                        sample.get_sample_rate() as f32 / ksynth_sample_rate as f32;
                     voice.increment_sample_index(pitch_factor * sample_playback_rate);
 
                     // Loop or deactivate
                     let mut reached_end = false;
-                    if sample_loop.is_none() { // Drums usually don't loop
+                    if sample_loop.is_none() {
+                        // Drums usually don't loop
                         if voice.current_sample_index() >= sample_length as f32 {
                             reached_end = true;
                         }
@@ -187,7 +192,8 @@ impl DrumKit {
                         if voice.current_sample_index() >= sample_loop.unwrap().end() as f32 {
                             voice.set_current_sample_index(
                                 sample_loop.unwrap().start() as f32
-                                    + (voice.current_sample_index() - sample_loop.unwrap().end() as f32),
+                                    + (voice.current_sample_index()
+                                        - sample_loop.unwrap().end() as f32),
                             );
                         }
                     }
