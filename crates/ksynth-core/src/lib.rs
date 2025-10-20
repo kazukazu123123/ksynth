@@ -369,29 +369,18 @@ impl KSynth {
             return;
         }
 
-        let new_max_polyphony = max_polyphony.max(1).min(MAX_POLYPHONY);
-
-        if new_max_polyphony < self.voices.len() as u32 {
-            let voices_to_stop_count = self.voices.len() - new_max_polyphony as usize;
-
-            for _ in 0..voices_to_stop_count {
-                if let Some(quietest_voice_index) = self
-                    .voices
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, v)| v.get_is_active())
-                    .min_by_key(|(_, v)| v.get_velocity())
-                    .map(|(index, _)| index)
-                {
-                    self.voices[quietest_voice_index].set_is_active(false);
-                }
-            }
+        // Stop all sound
+        for voice in self.voices.iter_mut() {
+            voice.set_is_active(false);
         }
 
+        // Remove inactive voice from voices array
         self.voices.retain(|v| v.get_is_active());
 
-        self.max_polyphony = new_max_polyphony;
+        // Update max polyphony
+        self.max_polyphony = max_polyphony.max(1).min(MAX_POLYPHONY);
 
+        // Reset current polyphony
         self.polyphony = self.voices.len() as u32;
     }
 
