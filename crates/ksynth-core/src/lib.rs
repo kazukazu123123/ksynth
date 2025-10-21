@@ -6,6 +6,8 @@ pub mod voice;
 
 use midi_cc::handle_control_change;
 use midi_channel::MidiChannel;
+use rayon::ThreadPoolBuilder;
+use rayon::prelude::*;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -106,6 +108,7 @@ pub struct KSynth {
     polyphony_per_channel: [u32; 16],
     max_polyphony: u32,
     drum_kit: Option<DrumKit>,
+    num_threads: u32,
 }
 
 impl KSynth {
@@ -128,6 +131,7 @@ impl KSynth {
     /// `num_channel`: The number of output audio channels (mono or stereo).
     /// `max_polyphony`: The maximum number of voices the synthesizer can play simultaneously. If set to 0, it will default to 1. Cannot exceed `MAX_POLYPHONY`.
     /// `fade_out_sample`: The number of samples used for fade-out when a note is released or a voice stops.
+    /// `num_threads`: The number of threads to use for audio processing. If 0, it will use all available CPU threads.
     /// `samples`: A thread-safe reference to a map where MIDI note numbers are keys and `Sample` objects are values.
     /// The provided samples will be resampled to match the specified `sample_rate`.
     ///
@@ -139,6 +143,7 @@ impl KSynth {
         num_channel: Channel,
         max_polyphony: u32,
         fade_out_sample: u64,
+        num_threads: u32,
         samples: Arc<RwLock<HashMap<u8, Sample>>>,
         drum_kit: Option<DrumKit>,
     ) -> Self {
@@ -173,7 +178,13 @@ impl KSynth {
             polyphony_per_channel: [0; 16],
             max_polyphony: max_polyphony.max(1).min(MAX_POLYPHONY),
             drum_kit,
+            num_threads,
         };
+
+        ThreadPoolBuilder::new()
+            .num_threads(num_threads as usize)
+            .build_global()
+            .unwrap();
 
         if let Some(dk) = &synth.drum_kit {
             dk.resample_all_drums(sample_rate);
@@ -354,6 +365,15 @@ impl KSynth {
         self.max_polyphony
     }
 
+    /// Returns the number of threads used for audio processing.
+    ///
+    /// # Returns
+    ///
+    /// The number of threads.
+    pub fn get_num_threads(&self) -> u32 {
+        self.num_threads
+    }
+
     /// Sets the maximum number of polyphony voices for the synthesizer.
     ///
     /// If the new maximum polyphony differs from the current value, all voices will be stopped,
@@ -481,6 +501,12 @@ impl KSynth {
 
         let fade_frames = self.fade_out_sample;
 
+        // Extract immutable references for parallel processing
+        let velocity_lut = &self.velocity_lut;
+        let midi_channels = &self.midi_channel;
+        let ksynth_num_channel = self.num_channel;
+        let ksynth_sample_rate = self.sample_rate;
+
         for frame in 0..frame_count {
             let buffer_index = frame * num_channel;
 
@@ -491,140 +517,158 @@ impl KSynth {
                 buffer[buffer_index + 1] = 0.0;
             }
 
-            // Process active voices
-            for voice in self.voices.iter_mut().filter(|v| v.get_is_active()) {
-                let voice_releasing = voice.get_is_releasing();
+            let (sum_left, sum_right) = self
+                .voices
+                .par_iter_mut()
+                .filter(|v| v.get_is_active())
+                .fold(
+                    || (0.0f32, 0.0f32), // Initial value for each thread
+                    |mut acc, voice| {
+                        let voice_releasing = voice.get_is_releasing();
+                        let note_index = voice.get_note() as usize;
 
-                let note_index = voice.get_note() as usize;
+                        if let Some(sample) = samples_guard
+                            .get(note_index)
+                            .and_then(|opt_s| opt_s.as_ref())
+                        {
+                            let sample_data = sample.get_sample_data();
+                            let sample_length = sample.sample_length();
+                            let sample_loop = sample.get_sample_loop();
 
-                if let Some(sample) = samples_guard
-                    .get(note_index)
-                    .and_then(|opt_s| opt_s.as_ref())
-                {
-                    let sample_data = sample.get_sample_data();
-                    let sample_length = sample.sample_length();
-                    let sample_loop = sample.get_sample_loop();
-
-                    if sample_length == 0 {
-                        voice.set_is_active(false);
-                        continue;
-                    }
-
-                    // Fade out processing
-                    let mut amplitude = 1.0;
-                    if voice.get_is_releasing() {
-                        if let Some(frames_since_release) = voice.get_frames_since_release() {
-                            // Adjust release time based on velocity
-                            // Lower velocity results in shorter release time
-                            let velocity_factor = voice.get_velocity() as f32 / 127.0;
-
-                            let velocity_fade_factor = 0.1 + 0.8 * velocity_factor;
-                            let adjusted_fade_frames =
-                                (fade_frames as f32 * velocity_fade_factor) as u64;
-
-                            if frames_since_release >= adjusted_fade_frames {
+                            if sample_length == 0 {
                                 voice.set_is_active(false);
-                                continue;
-                            } else if adjusted_fade_frames > 0 {
-                                amplitude *= 1.0
-                                    - (frames_since_release as f32 / adjusted_fade_frames as f32);
-                            } else {
-                                amplitude = 0.0;
+                                return acc; // Continue with current accumulator
                             }
-                        }
-                    }
 
-                    let vel = voice.get_velocity() as f32;
-                    let velocity_factor = self.velocity_lut[vel as usize];
-                    let channel_volume =
-                        self.midi_channel[voice.get_channel() as usize].get_volume();
-                    let volume_factor = channel_volume as f32 / 127.0;
+                            // Fade out processing
+                            let mut amplitude = 1.0;
+                            if voice.get_is_releasing() {
+                                if let Some(frames_since_release) = voice.get_frames_since_release()
+                                {
+                                    let velocity_factor = voice.get_velocity() as f32 / 127.0;
+                                    let velocity_fade_factor = 0.1 + 0.8 * velocity_factor;
+                                    let adjusted_fade_frames =
+                                        (fade_frames as f32 * velocity_fade_factor) as u64;
 
-                    amplitude *= velocity_factor * volume_factor;
-
-                    let pitch_factor =
-                        self.midi_channel[voice.get_channel() as usize].get_pitch_factor();
-
-                    // Sample processing
-                    let sample_data_len = match sample_data {
-                        SampleData::Mono(data) => data.len(),
-                        SampleData::Stereo(data) => data.len(),
-                    };
-
-                    if sample_data_len > 1 {
-                        let sample_index_f = voice.current_sample_index();
-                        let sample_index = sample_index_f.floor() as usize;
-                        let next_index = (sample_index + 1).min(sample_data_len - 1);
-                        let frac = sample_index_f - sample_index as f32;
-
-                        let (left_val, right_val, is_mono_source) = match sample_data {
-                            SampleData::Mono(data) => {
-                                let s1 = data.get(sample_index).copied().unwrap_or(0) as f32;
-                                let s2 = data.get(next_index).copied().unwrap_or(0) as f32;
-                                let value = s1 + (s2 - s1) * frac;
-                                let val = value * INV_I16_MAX;
-                                (val, val, true)
+                                    if frames_since_release >= adjusted_fade_frames {
+                                        voice.set_is_active(false);
+                                        return acc;
+                                    } else if adjusted_fade_frames > 0 {
+                                        amplitude *= 1.0
+                                            - (frames_since_release as f32
+                                                / adjusted_fade_frames as f32);
+                                    } else {
+                                        amplitude = 0.0;
+                                    }
+                                }
                             }
-                            SampleData::Stereo(data) => {
-                                let (l1, r1) = data.get(sample_index).copied().unwrap_or((0, 0));
-                                let (l2, r2) = data.get(next_index).copied().unwrap_or((0, 0));
-                                let left = l1 as f32 + (l2 as f32 - l1 as f32) * frac;
-                                let right = r1 as f32 + (r2 as f32 - r1 as f32) * frac;
-                                (left * INV_I16_MAX, right * INV_I16_MAX, false)
-                            }
-                        };
 
-                        // Pan handling (stereo)
-                        let pan = self.midi_channel[voice.get_channel() as usize].get_pan();
-                        let left_pan = ((1.0 - pan) * 0.5).sqrt();
-                        let right_pan = ((1.0 + pan) * 0.5).sqrt();
+                            let vel = voice.get_velocity() as f32;
+                            let velocity_factor = velocity_lut[vel as usize];
+                            let channel_volume =
+                                midi_channels[voice.get_channel() as usize].get_volume();
+                            let volume_factor = channel_volume as f32 / 127.0;
 
-                        match self.num_channel {
-                            Channel::Mono => {
-                                buffer[buffer_index] += (left_val + right_val) * 0.5 * amplitude;
-                            }
-                            Channel::Stereo => {
+                            amplitude *= velocity_factor * volume_factor;
+
+                            let pitch_factor =
+                                midi_channels[voice.get_channel() as usize].get_pitch_factor();
+
+                            // Sample processing
+                            let sample_data_len = match sample_data {
+                                SampleData::Mono(data) => data.len(),
+                                SampleData::Stereo(data) => data.len(),
+                            };
+
+                            if sample_data_len > 1 {
+                                let sample_index_f = voice.current_sample_index();
+                                let sample_index = sample_index_f.floor() as usize;
+                                let next_index = (sample_index + 1).min(sample_data_len - 1);
+                                let frac = sample_index_f - sample_index as f32;
+
+                                let (left_val, right_val, is_mono_source) = match sample_data {
+                                    SampleData::Mono(data) => {
+                                        let s1 =
+                                            data.get(sample_index).copied().unwrap_or(0) as f32;
+                                        let s2 = data.get(next_index).copied().unwrap_or(0) as f32;
+                                        let value = s1 + (s2 - s1) * frac;
+                                        let val = value * INV_I16_MAX;
+                                        (val, val, true)
+                                    }
+                                    SampleData::Stereo(data) => {
+                                        let (l1, r1) =
+                                            data.get(sample_index).copied().unwrap_or((0, 0));
+                                        let (l2, r2) =
+                                            data.get(next_index).copied().unwrap_or((0, 0));
+                                        let left = l1 as f32 + (l2 as f32 - l1 as f32) * frac;
+                                        let right = r1 as f32 + (r2 as f32 - r1 as f32) * frac;
+                                        (left * INV_I16_MAX, right * INV_I16_MAX, false)
+                                    }
+                                };
+
+                                // Pan handling (stereo)
+                                let pan = midi_channels[voice.get_channel() as usize].get_pan();
+                                let left_pan = ((1.0 - pan) * 0.5).sqrt();
+                                let right_pan = ((1.0 + pan) * 0.5).sqrt();
+
                                 let (final_left, final_right) = if is_mono_source {
                                     (left_val * 0.5, right_val * 0.5)
                                 } else {
                                     (left_val, right_val)
                                 };
-                                buffer[buffer_index] += final_left * amplitude * left_pan;
-                                buffer[buffer_index + 1] += final_right * amplitude * right_pan;
-                            }
-                        }
-                        // Advance sample index with pitch factor
-                        let sample_playback_rate =
-                            sample.get_sample_rate() as f32 / self.sample_rate as f32;
-                        voice.increment_sample_index(pitch_factor * sample_playback_rate);
 
-                        // Loop or deactivate
-                        let mut reached_end = false;
-                        if let Some(loop_info) = sample_loop {
-                            if voice.current_sample_index() >= loop_info.end() as f32 {
-                                voice.set_current_sample_index(
-                                    loop_info.start() as f32
-                                        + (voice.current_sample_index() - loop_info.end() as f32),
-                                );
+                                acc.0 += final_left * amplitude * left_pan;
+                                acc.1 += final_right * amplitude * right_pan;
+
+                                // Advance sample index with pitch factor
+                                let sample_playback_rate =
+                                    sample.get_sample_rate() as f32 / ksynth_sample_rate as f32;
+                                voice.increment_sample_index(pitch_factor * sample_playback_rate);
+
+                                // Loop or deactivate
+                                let mut reached_end = false;
+                                if let Some(loop_info) = sample_loop {
+                                    if voice.current_sample_index() >= loop_info.end() as f32 {
+                                        voice.set_current_sample_index(
+                                            loop_info.start() as f32
+                                                + (voice.current_sample_index()
+                                                    - loop_info.end() as f32),
+                                        );
+                                    }
+                                } else {
+                                    if voice.current_sample_index() >= sample_length as f32 {
+                                        reached_end = true;
+                                    }
+                                }
+
+                                if !voice_releasing && reached_end {
+                                    voice.set_is_active(false);
+                                }
+
+                                if voice_releasing {
+                                    voice.increment_frames_since_release();
+                                }
+                            } else if sample_data_len <= 1 {
+                                voice.set_is_active(false);
                             }
                         } else {
-                            if voice.current_sample_index() >= sample_length as f32 {
-                                reached_end = true;
-                            }
-                        }
-
-                        if !voice_releasing && reached_end {
                             voice.set_is_active(false);
                         }
+                        acc
+                    },
+                )
+                .reduce(
+                    || (0.0f32, 0.0f32),           // identity for the reduction
+                    |a, b| (a.0 + b.0, a.1 + b.1), // reduction operation
+                );
 
-                        if voice_releasing {
-                            voice.increment_frames_since_release();
-                        }
-                    } else if sample_data_len <= 1 {
-                        voice.set_is_active(false);
-                    }
-                } else {
-                    voice.set_is_active(false);
+            match ksynth_num_channel {
+                Channel::Mono => {
+                    buffer[buffer_index] += (sum_left + sum_right) * 0.5;
+                }
+                Channel::Stereo => {
+                    buffer[buffer_index] += sum_left;
+                    buffer[buffer_index + 1] += sum_right;
                 }
             }
 
@@ -634,10 +678,10 @@ impl KSynth {
                     buffer,
                     buffer_index,
                     fade_frames,
-                    &self.velocity_lut,
-                    &self.midi_channel,
-                    self.num_channel,
-                    self.sample_rate,
+                    velocity_lut,
+                    midi_channels,
+                    ksynth_num_channel,
+                    ksynth_sample_rate,
                 );
             }
         }

@@ -269,7 +269,9 @@ pub unsafe extern "C" fn ksynth_drum_kit_free(ptr: *mut KSynthDrumKitPtr) {
 /// `max_polyphony` - The maximum number of voices.
 /// `fade_out_sample` - The number of samples over which to apply the fade-out.
 ///                     Set to 0 to disable fade-out (no fading).
+/// `num_threads` - The number of threads to use for audio processing. If 0, it will use all available CPU threads. use 0 to use avaialbe cpu threads (all)
 /// `sample_map_ptr` - A pointer to the shared sample map created by `ksynth_sample_map_new`.
+/// `drum_kit_ptr` - A pointer to the shared drum kit created by `ksynth_drum_kit_new` (can be null).
 ///
 /// # Returns
 /// A pointer to a new `KSynth` instance, or `null` on failure.
@@ -290,6 +292,7 @@ pub unsafe extern "C" fn ksynth_new(
     num_channel: u8,
     max_polyphony: u32,
     fade_out_sample: u64,
+    num_threads: u32,
     sample_map_ptr: *const KSynthSampleMapPtr,
     drum_kit_ptr: *const KSynthDrumKitPtr,
 ) -> *mut KSynthPtr {
@@ -326,6 +329,7 @@ pub unsafe extern "C" fn ksynth_new(
         channel,
         max_polyphony,
         fade_out_sample,
+        num_threads,
         arc_map,
         drum_kit,
     ));
@@ -589,6 +593,27 @@ pub unsafe extern "C" fn ksynth_get_rendering_time(synth_ptr: *mut KSynthPtr) ->
         synth.get_rendering_time()
     } else {
         -1.0
+    }
+}
+
+/// Retrieves the number of threads used for audio processing.
+///
+/// # Arguments
+/// `synth_ptr` - A pointer to the KSynth instance.
+///
+/// # Returns
+/// The number of threads, or `-1` if the `synth_ptr` is invalid.
+///
+/// # Safety
+/// `synth_ptr` must be a valid pointer to a `KSynth` previously returned by `ksynth_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ksynth_get_num_threads(synth_ptr: *mut KSynthPtr) -> i32 {
+    if !synth_ptr.is_null() {
+        let synth_ksynth_ptr = synth_ptr as *mut KSynth;
+        let synth = unsafe { &*synth_ksynth_ptr };
+        synth.get_num_threads() as i32
+    } else {
+        -1
     }
 }
 
