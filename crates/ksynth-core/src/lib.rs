@@ -239,6 +239,10 @@ impl KSynth {
         // Remove inactive voice from voices array
         self.voices.retain(|v| v.get_is_active());
 
+        // Reset polyphony counters after removing all voices
+        self.polyphony = 0;
+        self.polyphony_per_channel = [0; 16];
+
         let mut resampled_samples_vec: Vec<Option<Sample>> = vec![None; 128];
 
         if let Ok(samples_guard) = samples.read() {
@@ -381,7 +385,8 @@ impl KSynth {
         self.max_polyphony = max_polyphony.max(1).min(MAX_POLYPHONY);
 
         // Reset current polyphony
-        self.polyphony = self.voices.len() as u32;
+        self.polyphony = 0;
+        self.polyphony_per_channel = [0; 16];
     }
 
     /// Fills the given audio buffer with rendered audio data.
@@ -649,27 +654,25 @@ impl KSynth {
 
         self.rendering_time = rendering_time;
 
-        // Remove inactive voices
-        self.voices.retain(|v| v.get_is_active());
-
-        // Remove inactive drum voices and update polyphony
-        if let Some(dk) = self.drum_kit.as_mut() {
-            dk.clean_up_inactive_voices();
-        }
-
-        self.polyphony = self.voices.len() as u32;
-        if let Some(dk) = &self.drum_kit {
-            self.polyphony += dk.get_drum_voices().len() as u32;
-        }
-
+        // Remove inactive voices and update polyphony counters
+        let mut active_voices = Vec::with_capacity(self.voices.len());
+        self.polyphony = 0;
         self.polyphony_per_channel = [0; 16];
 
-        for voice in self.voices.iter() {
-            let channel_idx = voice.get_channel() as usize;
-            self.polyphony_per_channel[channel_idx] += 1;
+        for voice in self.voices.drain(..) {
+            if voice.get_is_active() {
+                let channel_idx = voice.get_channel() as usize;
+                self.polyphony_per_channel[channel_idx] += 1;
+                self.polyphony += 1;
+                active_voices.push(voice);
+            }
         }
+        self.voices = active_voices;
 
-        if let Some(dk) = &self.drum_kit {
+        // Clean up inactive drum voices and update polyphony
+        if let Some(dk) = self.drum_kit.as_mut() {
+            dk.clean_up_inactive_voices();
+            self.polyphony += dk.get_drum_voices().len() as u32;
             for voice in dk.get_drum_voices().iter() {
                 let channel_idx = voice.get_channel() as usize;
                 self.polyphony_per_channel[channel_idx] += 1;
@@ -708,10 +711,16 @@ impl KSynth {
                     {
                         // Determine if it's a melodic or drum voice and remove it
                         if quietest_voice_index < self.voices.len() {
-                            self.voices.swap_remove(quietest_voice_index);
+                            let removed_voice = self.voices.swap_remove(quietest_voice_index);
+                            self.polyphony -= 1;
+                            self.polyphony_per_channel[removed_voice.get_channel() as usize] -= 1;
                         } else {
-                            dk.get_drum_voices_mut()
+                            let removed_voice = dk.get_drum_voices_mut()
                                 .remove(quietest_voice_index - self.voices.len());
+                            // Assuming drum kit's clean_up_inactive_voices handles its own polyphony_per_channel
+                            // For now, just decrement total polyphony
+                            self.polyphony -= 1;
+                            self.polyphony_per_channel[removed_voice.get_channel() as usize] -= 1;
                         }
                     }
                 }
@@ -729,8 +738,9 @@ impl KSynth {
                 .min_by_key(|(_, v)| v.get_velocity())
                 .map(|(index, _)| index)
             {
-                self.voices.remove(quietest_voice_index);
+                let removed_voice = self.voices.swap_remove(quietest_voice_index);
                 self.polyphony -= 1;
+                self.polyphony_per_channel[removed_voice.get_channel() as usize] -= 1;
             }
         }
 
