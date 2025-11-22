@@ -287,7 +287,7 @@ impl KSynth {
     /// Adds a MIDI command to the internal queue.
     ///
     /// The added MIDI command will be processed during the next call to `fill_buffer`.
-    /// The command must be encoded as a `u32` (e.g., `(status | (data1 << 8) | (data2 << 16))`).
+    /// The command must be encoded as a `u32` (e.g., `status | (data1 << 8) | (data2 << 16)`).
     ///
     /// # Parameters
     ///
