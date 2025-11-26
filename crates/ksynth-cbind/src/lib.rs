@@ -266,7 +266,7 @@ pub unsafe extern "C" fn ksynth_drum_kit_free(ptr: *mut KSynthDrumKitPtr) {
 /// # Arguments
 /// `sample_rate` - The sample rate of the synthesizer in Hz.
 /// `num_channel` - The number of channels (1 for mono, 2 for stereo).
-/// `max_polyphony` - The maximum number of voices.
+/// `max_polyphony` - (Deprecated) This parameter is kept for API compatibility but is no longer used internally.
 /// `fade_out_sample` - The number of samples over which to apply the fade-out.
 ///                     Set to 0 to disable fade-out (no fading).
 /// `sample_map_ptr` - A pointer to the shared sample map created by `ksynth_sample_map_new`.
@@ -652,11 +652,13 @@ pub unsafe extern "C" fn ksynth_get_polyphony_per_channel(
 
 /// Retrieves the maximum polyphony (maximum number of voices the synthesizer can handle).
 ///
+/// (Deprecated) This function always returns 0. It is kept for API compatibility.
+///
 /// # Arguments
 /// `synth_ptr` - A pointer to the KSynth instance.
 ///
 /// # Returns
-/// The maximum polyphony limit, or `-1` if the `synth_ptr` is invalid.
+/// Always returns 0. Returns `-1` if the `synth_ptr` is invalid.
 ///
 /// # Safety
 /// `synth_ptr` must be a valid pointer to a `KSynth` previously returned by `ksynth_new`.
@@ -673,20 +675,14 @@ pub unsafe extern "C" fn ksynth_get_max_polyphony(synth_ptr: *mut KSynthPtr) -> 
 
 /// Sets the maximum polyphony (number of voices the synthesizer can handle).
 ///
-/// If `max_polyphony` exceeds the system-supported maximum (as returned by `ksynth_get_max_supported_polyphony`),
-/// it will be clamped to that upper limit (`MAX_POLYPHONY`).
-/// Additionally, if `max_polyphony` is set to 0, it will be set as 1.
-///
-/// This function also stops all active voices, removes inactive voices, and resets the current polyphony to match
-/// the number of active voices.
+/// (Deprecated) This function does nothing. It is kept for API compatibility.
 ///
 /// # Arguments
 /// `synth_ptr` - A pointer to the KSynth instance.
-/// `max_polyphony` - The desired maximum number of voices.
+/// `max_polyphony` - (Ignored) This parameter is no longer used.
 ///
 /// # Safety
 /// `synth_ptr` must be a valid pointer to a `KSynth` previously returned by `ksynth_new`.
-/// If `max_polyphony` is set to 0, it will be set as 1.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ksynth_set_max_polyphony(synth_ptr: *mut KSynthPtr, max_polyphony: u32) {
     if !synth_ptr.is_null() {
