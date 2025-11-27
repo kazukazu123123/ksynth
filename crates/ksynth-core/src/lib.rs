@@ -104,6 +104,7 @@ pub struct KSynth {
     voices: Vec<Voice>,
     polyphony: u32,
     polyphony_per_channel: [u32; 16],
+    max_polyphony: u32,
     drum_kit: Option<DrumKit>,
 }
 
@@ -125,7 +126,7 @@ impl KSynth {
     ///
     /// `sample_rate`: The sample rate (Hz) used for audio processing.
     /// `num_channel`: The number of output audio channels (mono or stereo).
-    /// `max_polyphony`: (Deprecated) This parameter is kept for API compatibility but is no longer used internally.
+    /// `max_polyphony`: The maximum number of voices the synthesizer can play simultaneously. If set to 0, it will default to 1. Cannot exceed `MAX_POLYPHONY`.
     /// `fade_out_sample`: The number of samples used for fade-out when a note is released or a voice stops.
     /// `samples`: A thread-safe reference to a map where MIDI note numbers are keys and `Sample` objects are values.
     /// The provided samples will be resampled to match the specified `sample_rate`.
@@ -136,7 +137,7 @@ impl KSynth {
     pub fn new(
         sample_rate: u32,
         num_channel: Channel,
-        _max_polyphony: u32,
+        max_polyphony: u32,
         fade_out_sample: u64,
         samples: Arc<RwLock<HashMap<u8, Sample>>>,
         drum_kit: Option<DrumKit>,
@@ -167,9 +168,10 @@ impl KSynth {
             rendering_time: 0.0,
             samples: new_samples,
             num_channel,
-            voices: Vec::new(),
+            voices: Vec::with_capacity(max_polyphony.max(1).min(MAX_POLYPHONY) as usize),
             polyphony: 0,
             polyphony_per_channel: [0; 16],
+            max_polyphony: max_polyphony.max(1).min(MAX_POLYPHONY),
             drum_kit,
         };
 
@@ -351,20 +353,40 @@ impl KSynth {
     ///
     /// # Returns
     ///
-    /// (Deprecated) Always returns 0. This method is kept for API compatibility.
+    /// The maximum number of voices that can play simultaneously.
     pub fn get_max_polyphony(&self) -> u32 {
-        0
+        self.max_polyphony
     }
 
     /// Sets the maximum number of polyphony voices for the synthesizer.
     ///
-    /// (Deprecated) This method is kept for API compatibility but does nothing.
+    /// If the new maximum polyphony differs from the current value, all voices will be stopped,
+    /// and inactive voices will be removed.
+    /// If the specified value is 0, it will be ignored.
+    /// The value is capped by the `MAX_POLYPHONY` constant.
     ///
     /// # Parameters
     ///
-    /// `_max_polyphony`: (Ignored) This parameter is no longer used.
-    pub fn set_max_polyphony(&mut self, _max_polyphony: u32) {
-        // This method is kept for API compatibility but does nothing
+    /// `max_polyphony`: The new maximum number of polyphony voices. Ignored if set to 0.
+    pub fn set_max_polyphony(&mut self, max_polyphony: u32) {
+        if max_polyphony == 0 {
+            return;
+        }
+
+        // Stop all sound
+        for voice in self.voices.iter_mut() {
+            voice.set_is_active(false);
+        }
+
+        // Remove inactive voice from voices array
+        self.voices.retain(|v| v.get_is_active());
+
+        // Update max polyphony
+        self.max_polyphony = max_polyphony.max(1).min(MAX_POLYPHONY);
+
+        // Reset current polyphony
+        self.polyphony = 0;
+        self.polyphony_per_channel = [0; 16];
     }
 
     /// Fills the given audio buffer with rendered audio data.
@@ -673,12 +695,55 @@ impl KSynth {
         // Handle drum channel (MIDI channel 10)
         if channel == 9 {
             if let Some(dk) = self.drum_kit.as_mut() {
+                // Check total polyphony before adding drum voice
+                let current_total_polyphony =
+                    self.voices.len() as u32 + dk.get_drum_voices().len() as u32;
+                if current_total_polyphony >= self.max_polyphony {
+                    // Find and remove the quietest voice (either melodic or drum)
+                    let mut all_voices: Vec<&mut Voice> = self.voices.iter_mut().collect();
+                    all_voices.extend(dk.get_drum_voices_mut().iter_mut());
+
+                    if let Some(quietest_voice_index) = all_voices
+                        .iter()
+                        .enumerate()
+                        .min_by_key(|(_, v)| v.get_velocity())
+                        .map(|(index, _)| index)
+                    {
+                        // Determine if it's a melodic or drum voice and remove it
+                        if quietest_voice_index < self.voices.len() {
+                            let removed_voice = self.voices.swap_remove(quietest_voice_index);
+                            self.polyphony -= 1;
+                            self.polyphony_per_channel[removed_voice.get_channel() as usize] -= 1;
+                        } else {
+                            let removed_voice = dk.get_drum_voices_mut()
+                                .remove(quietest_voice_index - self.voices.len());
+                            // Assuming drum kit's clean_up_inactive_voices handles its own polyphony_per_channel
+                            // For now, just decrement total polyphony
+                            self.polyphony -= 1;
+                            self.polyphony_per_channel[removed_voice.get_channel() as usize] -= 1;
+                        }
+                    }
+                }
                 dk.note_on_drum(note, velocity);
             }
             return;
         }
 
         // Handle melodic channels
+        if self.polyphony >= self.max_polyphony {
+            if let Some(quietest_voice_index) = self
+                .voices
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, v)| v.get_velocity())
+                .map(|(index, _)| index)
+            {
+                let removed_voice = self.voices.swap_remove(quietest_voice_index);
+                self.polyphony -= 1;
+                self.polyphony_per_channel[removed_voice.get_channel() as usize] -= 1;
+            }
+        }
+
         let voice = Voice::new(channel, note, velocity, None);
         self.voices.push(voice);
         self.polyphony += 1;
