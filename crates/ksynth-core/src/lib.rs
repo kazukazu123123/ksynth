@@ -519,13 +519,7 @@ impl KSynth {
                     let mut amplitude = 1.0;
                     if voice.get_is_releasing() {
                         if let Some(frames_since_release) = voice.get_frames_since_release() {
-                            // Adjust release time based on velocity
-                            // Lower velocity results in shorter release time
-                            let velocity_factor = voice.get_velocity() as f32 / 127.0;
-
-                            let velocity_fade_factor = 0.1 + 0.8 * velocity_factor;
-                            let adjusted_fade_frames =
-                                (fade_frames as f32 * velocity_fade_factor) as u64;
+                            let adjusted_fade_frames = fade_frames;
 
                             if frames_since_release >= adjusted_fade_frames {
                                 voice.set_is_active(false);
@@ -618,7 +612,7 @@ impl KSynth {
                             }
                         }
 
-                        if !voice_releasing && reached_end {
+                        if reached_end {
                             voice.set_is_active(false);
                         }
 
@@ -698,7 +692,7 @@ impl KSynth {
                 // Check total polyphony before adding drum voice
                 let current_total_polyphony =
                     self.voices.len() as u32 + dk.get_drum_voices().len() as u32;
-                if current_total_polyphony >= self.max_polyphony {
+                if current_total_polyphony + 1 > self.max_polyphony {
                     // Find and remove the quietest voice (either melodic or drum)
                     let mut all_voices: Vec<&mut Voice> = self.voices.iter_mut().collect();
                     all_voices.extend(dk.get_drum_voices_mut().iter_mut());
@@ -706,7 +700,17 @@ impl KSynth {
                     if let Some(quietest_voice_index) = all_voices
                         .iter()
                         .enumerate()
-                        .min_by_key(|(_, v)| v.get_velocity())
+                        .min_by_key(|(_, v)| {
+                            if v.get_is_releasing() {
+                                (
+                                    0,
+                                    u64::MAX - v.get_frames_since_release().unwrap_or(0),
+                                    v.get_velocity(),
+                                )
+                            } else {
+                                (1, u64::MAX, v.get_velocity())
+                            }
+                        })
                         .map(|(index, _)| index)
                     {
                         // Determine if it's a melodic or drum voice and remove it
@@ -715,7 +719,8 @@ impl KSynth {
                             self.polyphony -= 1;
                             self.polyphony_per_channel[removed_voice.get_channel() as usize] -= 1;
                         } else {
-                            let removed_voice = dk.get_drum_voices_mut()
+                            let removed_voice = dk
+                                .get_drum_voices_mut()
                                 .remove(quietest_voice_index - self.voices.len());
                             // Assuming drum kit's clean_up_inactive_voices handles its own polyphony_per_channel
                             // For now, just decrement total polyphony
@@ -730,12 +735,22 @@ impl KSynth {
         }
 
         // Handle melodic channels
-        if self.polyphony >= self.max_polyphony {
+        if self.voices.len() as u32 + 1 > self.max_polyphony {
             if let Some(quietest_voice_index) = self
                 .voices
                 .iter()
                 .enumerate()
-                .min_by_key(|(_, v)| v.get_velocity())
+                .min_by_key(|(_, v)| {
+                    if v.get_is_releasing() {
+                        (
+                            0,
+                            u64::MAX - v.get_frames_since_release().unwrap_or(0),
+                            v.get_velocity(),
+                        )
+                    } else {
+                        (1, u64::MAX, v.get_velocity())
+                    }
+                })
                 .map(|(index, _)| index)
             {
                 let removed_voice = self.voices.swap_remove(quietest_voice_index);

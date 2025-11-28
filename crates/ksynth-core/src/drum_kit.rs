@@ -104,10 +104,7 @@ impl DrumKit {
                 let mut amplitude = 1.0;
                 if voice.get_is_releasing() {
                     if let Some(frames_since_release) = voice.get_frames_since_release() {
-                        let velocity_factor = voice.get_velocity() as f32 / 127.0;
-                        let velocity_fade_factor = 0.1 + 0.8 * velocity_factor;
-                        let adjusted_fade_frames =
-                            (fade_frames as f32 * velocity_fade_factor) as u64;
+                        let adjusted_fade_frames = fade_frames;
 
                         if frames_since_release >= adjusted_fade_frames {
                             voice.set_is_active(false);
@@ -198,7 +195,7 @@ impl DrumKit {
                         }
                     }
 
-                    if !voice_releasing && reached_end {
+                    if reached_end {
                         voice.set_is_active(false);
                     }
 
