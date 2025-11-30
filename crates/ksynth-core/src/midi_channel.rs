@@ -8,10 +8,6 @@ pub struct MidiChannel {
     bend_range_semitone: u8,
     pitch_factor: f32,
     sustain: bool,
-    // Cached values for optimization
-    cached_pan_l: f32,
-    cached_pan_r: f32,
-    cached_volume: f32,
 }
 
 impl Default for MidiChannel {
@@ -25,9 +21,6 @@ impl Default for MidiChannel {
             bend_range_semitone: 2,
             pitch_factor: 1.0,
             sustain: false,
-            cached_pan_l: ((1.0 - 0.0f32) * 0.5).sqrt(),
-            cached_pan_r: ((1.0 + 0.0f32) * 0.5).sqrt(),
-            cached_volume: 100.0 / 127.0,
         }
     }
 }
@@ -43,17 +36,6 @@ impl MidiChannel {
 
     pub fn set_pan(&mut self, pan: f32) {
         self.pan = pan;
-        // Pre-compute pan gains
-        self.cached_pan_l = ((1.0 - pan) * 0.5).sqrt();
-        self.cached_pan_r = ((1.0 + pan) * 0.5).sqrt();
-    }
-
-    pub fn get_pan_l(&self) -> f32 {
-        self.cached_pan_l
-    }
-
-    pub fn get_pan_r(&self) -> f32 {
-        self.cached_pan_r
     }
 
     pub fn get_volume(&self) -> u8 {
@@ -62,12 +44,6 @@ impl MidiChannel {
 
     pub fn set_volume(&mut self, volume: u8) {
         self.volume = volume;
-        // Pre-compute normalized volume
-        self.cached_volume = volume as f32 / 127.0;
-    }
-
-    pub fn get_volume_factor(&self) -> f32 {
-        self.cached_volume
     }
 
     pub fn set_rpn_msb(&mut self, value: u8) {

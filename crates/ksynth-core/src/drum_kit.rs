@@ -87,12 +87,6 @@ impl DrumKit {
     ) {
         let drum_samples_guard = self.drum_samples.read().unwrap();
 
-        let fade_reciprocal = if fade_frames > 0 {
-            1.0 / fade_frames as f32
-        } else {
-            0.0
-        };
-
         for voice in self.drum_voices.iter_mut().filter(|v| v.get_is_active()) {
             let voice_releasing = voice.get_is_releasing();
 
@@ -116,7 +110,8 @@ impl DrumKit {
                             voice.set_is_active(false);
                             continue;
                         } else if adjusted_fade_frames > 0 {
-                            amplitude *= 1.0 - (frames_since_release as f32 * fade_reciprocal);
+                            amplitude *=
+                                1.0 - (frames_since_release as f32 / adjusted_fade_frames as f32);
                         } else {
                             amplitude = 0.0;
                         }
@@ -125,8 +120,8 @@ impl DrumKit {
 
                 let vel = voice.get_velocity() as f32;
                 let velocity_factor = velocity_lut[vel as usize];
-                let volume_factor =
-                    midi_channel_states[voice.get_channel() as usize].get_volume_factor();
+                let channel_volume = midi_channel_states[voice.get_channel() as usize].get_volume();
+                let volume_factor = channel_volume as f32 / 127.0;
 
                 amplitude *= velocity_factor * volume_factor;
 
@@ -150,7 +145,7 @@ impl DrumKit {
                             let s1 = data.get(sample_index).copied().unwrap_or(0) as f32;
                             let s2 = data.get(next_index).copied().unwrap_or(0) as f32;
                             let value = s1 + (s2 - s1) * frac;
-                            let val = value * (1.0 / i16::MAX as f32);
+                            let val = value / i16::MAX as f32;
                             (val, val)
                         }
                         SampleData::Stereo(data) => {
@@ -158,16 +153,14 @@ impl DrumKit {
                             let (l2, r2) = data.get(next_index).copied().unwrap_or((0, 0));
                             let left = l1 as f32 + (l2 as f32 - l1 as f32) * frac;
                             let right = r1 as f32 + (r2 as f32 - r1 as f32) * frac;
-                            (
-                                left * (1.0 / i16::MAX as f32),
-                                right * (1.0 / i16::MAX as f32),
-                            )
+                            (left / i16::MAX as f32, right / i16::MAX as f32)
                         }
                     };
 
                     // Pan handling (stereo)
-                    let left_pan = midi_channel_states[voice.get_channel() as usize].get_pan_l();
-                    let right_pan = midi_channel_states[voice.get_channel() as usize].get_pan_r();
+                    let pan = midi_channel_states[voice.get_channel() as usize].get_pan();
+                    let left_pan = ((1.0 - pan) * 0.5).sqrt();
+                    let right_pan = ((1.0 + pan) * 0.5).sqrt();
 
                     match ksynth_num_channel {
                         Channel::Mono => {
