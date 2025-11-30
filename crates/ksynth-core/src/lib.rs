@@ -485,6 +485,11 @@ impl KSynth {
         let rendering_time_start = Instant::now();
 
         let fade_frames = self.fade_out_sample;
+        let fade_reciprocal = if fade_frames > 0 {
+            1.0 / fade_frames as f32
+        } else {
+            0.0
+        };
 
         for frame in 0..frame_count {
             let buffer_index = frame * num_channel;
@@ -525,8 +530,7 @@ impl KSynth {
                                 voice.set_is_active(false);
                                 continue;
                             } else if adjusted_fade_frames > 0 {
-                                amplitude *= 1.0
-                                    - (frames_since_release as f32 / adjusted_fade_frames as f32);
+                                amplitude *= 1.0 - (frames_since_release as f32 * fade_reciprocal);
                             } else {
                                 amplitude = 0.0;
                             }
@@ -535,9 +539,8 @@ impl KSynth {
 
                     let vel = voice.get_velocity() as f32;
                     let velocity_factor = self.velocity_lut[vel as usize];
-                    let channel_volume =
-                        self.midi_channel[voice.get_channel() as usize].get_volume();
-                    let volume_factor = channel_volume as f32 / 127.0;
+                    let volume_factor =
+                        self.midi_channel[voice.get_channel() as usize].get_volume_factor();
 
                     amplitude *= velocity_factor * volume_factor;
 
@@ -574,9 +577,8 @@ impl KSynth {
                         };
 
                         // Pan handling (stereo)
-                        let pan = self.midi_channel[voice.get_channel() as usize].get_pan();
-                        let left_pan = ((1.0 - pan) * 0.5).sqrt();
-                        let right_pan = ((1.0 + pan) * 0.5).sqrt();
+                        let left_pan = self.midi_channel[voice.get_channel() as usize].get_pan_l();
+                        let right_pan = self.midi_channel[voice.get_channel() as usize].get_pan_r();
 
                         match self.num_channel {
                             Channel::Mono => {
